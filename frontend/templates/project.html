@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>プロジェクト詳細 - AI Design Automation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- Header -->
+<header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center gap-4">
+  <a href="/" class="text-gray-400 hover:text-gray-600 text-sm">← 一覧に戻る</a>
+  <h1 id="project-name" class="text-lg font-bold text-gray-800"></h1>
+  <span id="phase-badge" class="phase-badge"></span>
+</header>
+
+<main class="max-w-6xl mx-auto px-6 py-6">
+
+  <!-- Phase Stepper -->
+  <div id="stepper" class="flex items-center gap-2 mb-8 overflow-x-auto pb-2"></div>
+
+  <!-- Phase Panel -->
+  <div id="phase-panel">
+
+    <!-- Run Agent Button Area -->
+    <div id="run-area" class="mb-4 flex items-center gap-3">
+      <button id="btn-run" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2">
+        <span id="run-label">エージェントを実行</span>
+      </button>
+      <!-- Factcheck can also be triggered independently -->
+      <button id="btn-factcheck" class="hidden border border-yellow-500 text-yellow-600 hover:bg-yellow-50 px-4 py-2.5 rounded-lg text-sm font-medium transition">
+        ファクトチェック実行
+      </button>
+      <div id="run-spinner" class="hidden spinner"></div>
+      <span id="run-status" class="text-sm text-gray-500"></span>
+    </div>
+
+    <!-- Output Viewer -->
+    <div id="output-area" class="hidden">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <!-- Toolbar -->
+        <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50">
+          <span id="output-phase-label" class="text-sm font-semibold text-gray-700"></span>
+          <div class="flex items-center gap-2 text-xs text-gray-400">
+            <span id="output-status-label"></span>
+          </div>
+        </div>
+
+        <!-- iframe preview -->
+        <iframe id="output-iframe" class="output-iframe" style="height:600px;"></iframe>
+      </div>
+
+      <!-- Review Panel -->
+      <div id="review-panel" class="mt-4 bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+        <h3 class="text-sm font-semibold text-gray-700 mb-4">レビュー</h3>
+
+        <!-- Approve -->
+        <div class="flex flex-wrap gap-3 mb-4">
+          <button id="btn-approve" class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition">
+            承認して次へ進む
+          </button>
+          <button id="btn-reject-toggle" class="border border-red-400 text-red-500 hover:bg-red-50 px-5 py-2 rounded-lg text-sm font-medium transition">
+            差し戻し
+          </button>
+          <button id="btn-edit-toggle" class="border border-gray-300 text-gray-600 hover:bg-gray-50 px-5 py-2 rounded-lg text-sm font-medium transition">
+            一部修正
+          </button>
+        </div>
+
+        <!-- Reject form -->
+        <div id="reject-form" class="hidden mt-3">
+          <textarea id="reject-comment" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-red-400 resize-none" placeholder="差し戻しの理由・修正してほしい内容を記載してください"></textarea>
+          <div class="flex gap-2 mt-2">
+            <button id="btn-reject-submit" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">差し戻しを送信</button>
+            <button id="btn-reject-cancel" class="text-gray-500 text-sm px-3 py-2">キャンセル</button>
+          </div>
+        </div>
+
+        <!-- Edit form -->
+        <div id="edit-form" class="hidden mt-3">
+          <textarea id="edit-instruction" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 resize-none" placeholder="修正してほしい内容を具体的に記載してください（例：市場規模のグラフをパイチャートに変更、競合比較にXXを追加）"></textarea>
+          <div class="flex gap-2 mt-2">
+            <button id="btn-edit-submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">修正を依頼してエージェント再実行</button>
+            <button id="btn-edit-cancel" class="text-gray-500 text-sm px-3 py-2">キャンセル</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+
+<script src="/static/js/project.js"></script>
+</body>
+</html>

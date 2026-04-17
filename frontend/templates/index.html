@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Design Automation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- Header -->
+<header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+  <h1 class="text-xl font-bold text-gray-800">AI Design Automation</h1>
+  <button id="btn-new" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+    + 新規プロジェクト
+  </button>
+</header>
+
+<main class="max-w-5xl mx-auto px-6 py-8">
+
+  <!-- Project List -->
+  <section id="section-list">
+    <h2 class="text-lg font-semibold text-gray-700 mb-4">プロジェクト一覧</h2>
+    <div id="project-list" class="grid gap-4">
+      <div class="text-gray-400 text-sm">読み込み中...</div>
+    </div>
+  </section>
+
+  <!-- New Project Form (hidden by default) -->
+  <section id="section-form" class="hidden">
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-lg font-semibold text-gray-800">新規プロジェクト作成</h2>
+        <button id="btn-cancel" class="text-gray-400 hover:text-gray-600 text-sm">キャンセル</button>
+      </div>
+
+      <form id="new-project-form" class="space-y-5">
+
+        <!-- Row 1 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">プロジェクト名 <span class="text-red-500">*</span></label>
+            <input name="project_name" type="text" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" placeholder="例: 健康管理アプリ">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">システム種別 <span class="text-red-500">*</span></label>
+            <select name="system_type" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+              <option value="">選択してください</option>
+              <option value="Webシステム">Webシステム</option>
+              <option value="スマホアプリ">スマホアプリ</option>
+              <option value="Web＋スマホアプリ">Web＋スマホアプリ（両方）</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Row 2 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">業種・ドメイン <span class="text-red-500">*</span></label>
+            <input name="industry" type="text" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例: ヘルスケア・フィットネス">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">ターゲット（事業上） <span class="text-red-500">*</span></label>
+            <select name="target_business" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+              <option value="">選択してください</option>
+              <option value="B2C">B2C</option>
+              <option value="B2B">B2B</option>
+              <option value="社内向け">社内向け</option>
+              <option value="その他">その他</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Background -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">背景・目的 <span class="text-red-500">*</span></label>
+          <textarea name="background" required rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="このシステムを開発する背景・達成したい目的を記載してください"></textarea>
+        </div>
+
+        <!-- Target Users -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">ターゲットユーザ（サービス利用者） <span class="text-red-500">*</span></label>
+          <textarea name="target_users" required rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="例: 20〜40代の健康意識が高い会社員、スマートフォンを日常的に使用"></textarea>
+        </div>
+
+        <!-- Competitors -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">競合情報 <span class="text-gray-400 text-xs">任意</span></label>
+          <textarea name="competitors" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="例: ○○アプリ（月額500円・MAU100万）、△△サービス（無料・広告収益モデル）"></textarea>
+        </div>
+
+        <!-- Row Budget + Roadmap -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">予算規模 <span class="text-red-500">*</span></label>
+            <select name="budget" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+              <option value="">選択してください</option>
+              <option value="〜500万円">〜500万円</option>
+              <option value="500〜2,000万円">500〜2,000万円</option>
+              <option value="2,000万円〜">2,000万円〜</option>
+              <option value="未定">未定</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">ロードマップ <span class="text-red-500">*</span></label>
+            <input name="roadmap" type="text" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例: 2025年Q3 MVP、2026年Q1 正式リリース">
+          </div>
+        </div>
+
+        <!-- System Components -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">システム構成要素 <span class="text-gray-400 text-xs">任意</span></label>
+          <textarea name="system_components" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="例: 既存の会員DBとAPI連携、Stripe決済API、Google Maps API"></textarea>
+        </div>
+
+        <!-- Overview -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">プロジェクト概要・課題感 <span class="text-red-500">*</span></label>
+          <textarea name="overview" required rows="4" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="現状の課題、実現したいこと、開発の背景などを詳しく記載してください"></textarea>
+        </div>
+
+        <!-- Notes -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">特記事項・制約 <span class="text-gray-400 text-xs">任意</span></label>
+          <textarea name="notes" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="法的制約、既存システムとの制約、技術スタックの指定など"></textarea>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" id="btn-cancel2" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">キャンセル</button>
+          <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-medium transition">
+            プロジェクトを作成
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+</main>
+
+<script src="/static/js/index.js"></script>
+</body>
+</html>
