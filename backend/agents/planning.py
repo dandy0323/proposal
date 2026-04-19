@@ -1,3 +1,4 @@
+from typing import Optional
 import anthropic
 import os
 
@@ -35,7 +36,7 @@ SYSTEM_PROMPT = """あなたは優秀なITコンサルタント・システム�
 """
 
 
-def run(form_data: dict, previous_output: str | None = None, edit_instruction: str | None = None) -> str:
+def run(form_data: dict, previous_output: Optional[str] = None, edit_instruction: Optional[str] = None) -> str:
     user_content = _build_user_message(form_data, previous_output, edit_instruction)
 
     response = _get_client().messages.create(
@@ -58,7 +59,7 @@ def _strip_code_fence(text: str) -> str:
     return text.strip()
 
 
-def _build_user_message(form_data: dict, previous_output: str | None, edit_instruction: str | None) -> str:
+def _build_user_message(form_data: dict, previous_output: Optional[str], edit_instruction: Optional[str]) -> str:
     lines = ["## プロジェクト情報\n"]
     field_labels = {
         "project_name": "プロジェクト名",

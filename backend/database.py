@@ -2,6 +2,7 @@ import sqlite3
 import json
 from pathlib import Path
 from datetime import datetime
+from typing import Optional, List
 
 DB_PATH = Path(__file__).parent.parent / "data" / "projects.db"
 
@@ -55,7 +56,7 @@ def create_project(name: str, form_data: dict) -> int:
     return project_id
 
 
-def get_project(project_id: int) -> dict | None:
+def get_project(project_id: int) -> Optional[dict]:
     conn = get_conn()
     row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
     conn.close()
@@ -66,7 +67,7 @@ def get_project(project_id: int) -> dict | None:
     return d
 
 
-def list_projects() -> list[dict]:
+def list_projects() -> List[dict]:
     conn = get_conn()
     rows = conn.execute("SELECT * FROM projects ORDER BY updated_at DESC").fetchall()
     conn.close()
@@ -107,7 +108,7 @@ def save_phase_output(project_id: int, phase: str, output_html: str) -> int:
     return output_id
 
 
-def get_latest_phase_output(project_id: int, phase: str) -> dict | None:
+def get_latest_phase_output(project_id: int, phase: str) -> Optional[dict]:
     conn = get_conn()
     row = conn.execute(
         "SELECT * FROM phase_outputs WHERE project_id = ? AND phase = ? AND status != 'superseded' ORDER BY created_at DESC LIMIT 1",

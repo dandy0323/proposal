@@ -1,3 +1,4 @@
+from typing import Optional
 import anthropic
 import os
 
@@ -35,8 +36,8 @@ SYSTEM_PROMPT = """あなたは優秀なUIデザイナー・フロントエン�
 def run(
     form_data: dict,
     proposal_outline_html: str,
-    previous_output: str | None = None,
-    edit_instruction: str | None = None,
+    previous_output: Optional[str] = None,
+    edit_instruction: Optional[str] = None,
 ) -> str:
     user_content = _build_user_message(form_data, proposal_outline_html, previous_output, edit_instruction)
 
@@ -63,8 +64,8 @@ def _strip_code_fence(text: str) -> str:
 def _build_user_message(
     form_data: dict,
     proposal_outline_html: str,
-    previous_output: str | None,
-    edit_instruction: str | None,
+    previous_output: Optional[str],
+    edit_instruction: Optional[str],
 ) -> str:
     lines = [
         "## プロジェクト基本情報",

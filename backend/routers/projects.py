@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from backend import database as db
@@ -101,8 +102,8 @@ def _run_phase_agent(
     phase: str,
     form_data: dict,
     project_id: int,
-    previous_html: str | None,
-    edit_instruction: str | None,
+    previous_html: Optional[str],
+    edit_instruction: Optional[str],
 ) -> str:
     if phase == "planning":
         return planning.run(form_data, previous_html, edit_instruction)
