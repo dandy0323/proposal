@@ -44,7 +44,18 @@ def run(form_data: dict, previous_output: str | None = None, edit_instruction: s
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_content}],
     )
-    return response.content[0].text
+    return _strip_code_fence(response.content[0].text)
+
+
+def _strip_code_fence(text: str) -> str:
+    text = text.strip()
+    if text.startswith("```html"):
+        text = text[7:]
+    elif text.startswith("```"):
+        text = text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    return text.strip()
 
 
 def _build_user_message(form_data: dict, previous_output: str | None, edit_instruction: str | None) -> str:
