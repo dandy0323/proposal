@@ -1,7 +1,8 @@
 import anthropic
 import os
 
-CLIENT = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+def _get_client():
+    return anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
 
 SYSTEM_PROMPT = """あなたは優秀なITコンサルタント・システムアナリストです。
 ユーザーから提供されたプロジェクト情報をもとに、Webシステム／スマホアプリ開発の企画・検討を行い、
@@ -37,7 +38,7 @@ SYSTEM_PROMPT = """あなたは優秀なITコンサルタント・システム�
 def run(form_data: dict, previous_output: str | None = None, edit_instruction: str | None = None) -> str:
     user_content = _build_user_message(form_data, previous_output, edit_instruction)
 
-    response = CLIENT.messages.create(
+    response = _get_client().messages.create(
         model="claude-sonnet-4-6",
         max_tokens=16000,
         system=SYSTEM_PROMPT,

@@ -3,8 +3,11 @@ import os
 import json
 from tavily import TavilyClient
 
-ANTHROPIC_CLIENT = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
-TAVILY_CLIENT = TavilyClient(api_key=os.environ.get("TAVILY_API_KEY", ""))
+def _get_anthropic():
+    return anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+
+def _get_tavily():
+    return TavilyClient(api_key=os.environ.get("TAVILY_API_KEY", ""))
 
 SYSTEM_PROMPT = """あなたは優秀なファクトチェッカーです。
 提供された企画・検討ダッシュボードHTMLの内容を精査し、事実確認が必要な箇所を検証してください。
@@ -55,9 +58,10 @@ def run(planning_html: str) -> str:
             "content": f"以下の企画・検討ダッシュボードHTMLをファクトチェックしてください。\n\n```html\n{planning_html}\n```",
         }
     ]
+    anthropic_client = _get_anthropic()
 
     while True:
-        response = ANTHROPIC_CLIENT.messages.create(
+        response = anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=16000,
             system=SYSTEM_PROMPT,
@@ -94,7 +98,7 @@ def run(planning_html: str) -> str:
 
 def _search(query: str) -> str:
     try:
-        result = TAVILY_CLIENT.search(query=query, max_results=3)
+        result = _get_tavily().search(query=query, max_results=3)
         lines = []
         for r in result.get("results", []):
             lines.append(f"タイトル: {r.get('title', '')}")

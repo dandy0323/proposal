@@ -1,7 +1,8 @@
 import anthropic
 import os
 
-CLIENT = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+def _get_client():
+    return anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
 
 SYSTEM_PROMPT = """あなたは優秀なUIデザイナー・フロントエンドエンジニアです。
 承認された提案書骨子レポートをもとに、HTML/CSSワイヤーフレームを作成してください。
@@ -39,7 +40,7 @@ def run(
 ) -> str:
     user_content = _build_user_message(form_data, proposal_outline_html, previous_output, edit_instruction)
 
-    response = CLIENT.messages.create(
+    response = _get_client().messages.create(
         model="claude-sonnet-4-6",
         max_tokens=16000,
         system=SYSTEM_PROMPT,
