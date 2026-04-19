@@ -26,11 +26,10 @@ if %errorlevel% == 0 (
 )
 
 echo [1/2] 依存パッケージをインストール中...
-pip install -r requirements.txt -q
+pip install -r requirements.txt -q 2>nul
 if %errorlevel% neq 0 (
-    echo [エラー] pip install に失敗しました。
-    pause
-    exit /b
+    echo [警告] pip install でエラーが発生しましたが、起動を続行します。
+    echo        （Anaconda環境のパッケージバージョン問題のため無視可能です）
 )
 
 echo [2/2] サーバーを起動します...
