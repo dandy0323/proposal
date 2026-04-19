@@ -16,22 +16,109 @@
   <span id="phase-badge" class="phase-badge"></span>
 </header>
 
-<main class="max-w-6xl mx-auto px-6 py-6">
+<main class="max-w-7xl mx-auto px-6 py-6">
 
   <!-- Phase Stepper -->
-  <div id="stepper" class="flex items-center gap-2 mb-8 overflow-x-auto pb-2"></div>
+  <div id="stepper" class="flex items-center gap-2 mb-6 overflow-x-auto pb-2"></div>
 
-  <!-- Phase Panel -->
+  <!-- ═══ Sub-phase panel (planning phase only) ═══ -->
+  <div id="sub-phase-panel" class="hidden">
+    <div class="flex bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden" style="min-height:720px">
+
+      <!-- Sidebar -->
+      <div id="sub-sidebar" class="w-56 border-r border-gray-200 overflow-y-auto flex-shrink-0 bg-gray-50 py-2"></div>
+
+      <!-- Main content area -->
+      <div class="flex-1 flex flex-col min-w-0">
+
+        <!-- Sub-phase header -->
+        <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-white flex-shrink-0">
+          <span id="sub-phase-title" class="text-sm font-semibold text-gray-700"></span>
+          <span id="sub-status-label" class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500"></span>
+        </div>
+
+        <!-- Run area -->
+        <div id="sub-run-area" class="flex items-center gap-3 px-5 py-3 border-b border-gray-100 bg-gray-50 flex-shrink-0">
+          <button id="btn-sub-run" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition">
+            エージェントを実行
+          </button>
+          <div id="sub-spinner" class="hidden spinner"></div>
+          <span id="sub-run-status" class="text-sm text-gray-500"></span>
+        </div>
+
+        <!-- Empty state -->
+        <div id="sub-empty-state" class="hidden flex-1 flex items-center justify-center py-20 text-gray-400 text-sm">
+          この手順はまだ実行されていません
+        </div>
+
+        <!-- iframe output -->
+        <iframe id="sub-iframe" class="w-full hidden flex-shrink-0" style="height:520px; border:none;"></iframe>
+
+        <!-- Review panel -->
+        <div id="sub-review-panel" class="hidden px-5 py-4 border-t border-gray-200 bg-white flex-shrink-0">
+          <div class="flex flex-wrap gap-3 mb-3">
+            <button id="btn-sub-approve" class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition">
+              承認して次へ進む
+            </button>
+            <button id="btn-sub-reject-toggle" class="border border-red-400 text-red-500 hover:bg-red-50 px-5 py-2 rounded-lg text-sm font-medium transition">
+              差し戻し
+            </button>
+            <button id="btn-sub-edit-toggle" class="border border-gray-300 text-gray-600 hover:bg-gray-50 px-5 py-2 rounded-lg text-sm font-medium transition">
+              一部修正
+            </button>
+          </div>
+          <!-- Reject form -->
+          <div id="sub-reject-form" class="hidden mt-2">
+            <textarea id="sub-reject-comment" rows="3"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-red-400 resize-none"
+              placeholder="差し戻しの理由を記載してください"></textarea>
+            <div class="flex gap-2 mt-2">
+              <button id="btn-sub-reject-submit" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">差し戻しを送信</button>
+              <button id="btn-sub-reject-cancel" class="text-gray-500 text-sm px-3 py-2">キャンセル</button>
+            </div>
+          </div>
+          <!-- Edit form -->
+          <div id="sub-edit-form" class="hidden mt-2">
+            <textarea id="sub-edit-instruction" rows="3"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+              placeholder="修正してほしい内容を具体的に記載してください"></textarea>
+            <div class="flex gap-2 mt-2">
+              <button id="btn-sub-edit-submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">修正を依頼してエージェント再実行</button>
+              <button id="btn-sub-edit-cancel" class="text-gray-500 text-sm px-3 py-2">キャンセル</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Deep-dive panel (why_market only) -->
+        <div id="deep-dive-panel" class="hidden px-5 py-4 border-t border-blue-100 bg-blue-50 flex-shrink-0">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-sm font-semibold text-blue-700">追加調査</span>
+            <span class="text-xs text-blue-500">競合・市場について深掘り調査を実行します</span>
+          </div>
+          <div class="flex gap-3 items-start">
+            <textarea id="deep-dive-input" rows="2"
+              class="flex-1 border border-blue-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+              placeholder="例：〇〇企業の競合優位性について深掘りして"></textarea>
+            <div class="flex flex-col items-center gap-1">
+              <button id="btn-deep-dive" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap">
+                追加調査を実行
+              </button>
+              <div id="deep-dive-spinner" class="hidden spinner"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Regular phase panel (factcheck / proposal_outline / mockup) ═══ -->
   <div id="phase-panel">
 
-    <!-- Run Agent Button Area -->
+    <!-- Run Button Area -->
     <div id="run-area" class="mb-4 flex items-center gap-3">
-      <button id="btn-run" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2">
+      <button id="btn-run" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition">
         <span id="run-label">エージェントを実行</span>
-      </button>
-      <!-- Factcheck can also be triggered independently -->
-      <button id="btn-factcheck" class="hidden border border-yellow-500 text-yellow-600 hover:bg-yellow-50 px-4 py-2.5 rounded-lg text-sm font-medium transition">
-        ファクトチェック実行
       </button>
       <div id="run-spinner" class="hidden spinner"></div>
       <span id="run-status" class="text-sm text-gray-500"></span>
@@ -40,23 +127,16 @@
     <!-- Output Viewer -->
     <div id="output-area" class="hidden">
       <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <!-- Toolbar -->
         <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50">
           <span id="output-phase-label" class="text-sm font-semibold text-gray-700"></span>
-          <div class="flex items-center gap-2 text-xs text-gray-400">
-            <span id="output-status-label"></span>
-          </div>
+          <span id="output-status-label" class="text-xs text-gray-400"></span>
         </div>
-
-        <!-- iframe preview -->
         <iframe id="output-iframe" class="output-iframe" style="height:600px;"></iframe>
       </div>
 
       <!-- Review Panel -->
       <div id="review-panel" class="mt-4 bg-white rounded-xl border border-gray-200 shadow-sm p-5">
         <h3 class="text-sm font-semibold text-gray-700 mb-4">レビュー</h3>
-
-        <!-- Approve -->
         <div class="flex flex-wrap gap-3 mb-4">
           <button id="btn-approve" class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition">
             承認して次へ進む
@@ -68,19 +148,21 @@
             一部修正
           </button>
         </div>
-
         <!-- Reject form -->
         <div id="reject-form" class="hidden mt-3">
-          <textarea id="reject-comment" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-red-400 resize-none" placeholder="差し戻しの理由・修正してほしい内容を記載してください"></textarea>
+          <textarea id="reject-comment" rows="3"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-red-400 resize-none"
+            placeholder="差し戻しの理由・修正してほしい内容を記載してください"></textarea>
           <div class="flex gap-2 mt-2">
             <button id="btn-reject-submit" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">差し戻しを送信</button>
             <button id="btn-reject-cancel" class="text-gray-500 text-sm px-3 py-2">キャンセル</button>
           </div>
         </div>
-
         <!-- Edit form -->
         <div id="edit-form" class="hidden mt-3">
-          <textarea id="edit-instruction" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 resize-none" placeholder="修正してほしい内容を具体的に記載してください（例：市場規模のグラフをパイチャートに変更、競合比較にXXを追加）"></textarea>
+          <textarea id="edit-instruction" rows="3"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+            placeholder="修正してほしい内容を具体的に記載してください"></textarea>
           <div class="flex gap-2 mt-2">
             <button id="btn-edit-submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">修正を依頼してエージェント再実行</button>
             <button id="btn-edit-cancel" class="text-gray-500 text-sm px-3 py-2">キャンセル</button>

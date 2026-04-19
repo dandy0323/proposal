@@ -2,7 +2,9 @@ import sqlite3
 import json
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
+
+from backend.constants import SUB_PHASES, MAIN_PHASE_ORDER
 
 DB_PATH = Path(__file__).parent.parent / "data" / "projects.db"
 
@@ -22,6 +24,7 @@ def init_db():
             name TEXT NOT NULL,
             form_data TEXT NOT NULL,
             current_phase TEXT NOT NULL DEFAULT 'planning',
+            current_sub_phase TEXT NOT NULL DEFAULT 'why_background',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
@@ -38,17 +41,40 @@ def init_db():
             updated_at TEXT NOT NULL,
             FOREIGN KEY (project_id) REFERENCES projects(id)
         );
+
+        CREATE TABLE IF NOT EXISTS sub_phase_outputs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            sub_phase_key TEXT NOT NULL,
+            output_html TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            review_comment TEXT,
+            edit_instruction TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (project_id) REFERENCES projects(id)
+        );
     """)
     conn.commit()
+
+    # Migration: add current_sub_phase column to existing projects tables
+    try:
+        conn.execute("ALTER TABLE projects ADD COLUMN current_sub_phase TEXT DEFAULT 'why_background'")
+        conn.commit()
+    except Exception:
+        pass
+
     conn.close()
 
+
+# ── Project CRUD ──────────────────────────────────────────────────────────────
 
 def create_project(name: str, form_data: dict) -> int:
     conn = get_conn()
     now = datetime.now().isoformat()
     cur = conn.execute(
-        "INSERT INTO projects (name, form_data, current_phase, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-        (name, json.dumps(form_data, ensure_ascii=False), "planning", now, now),
+        "INSERT INTO projects (name, form_data, current_phase, current_sub_phase, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (name, json.dumps(form_data, ensure_ascii=False), "planning", "why_background", now, now),
     )
     project_id = cur.lastrowid
     conn.commit()
@@ -90,10 +116,22 @@ def update_project_phase(project_id: int, phase: str):
     conn.close()
 
 
+def update_project_sub_phase(project_id: int, sub_phase_key: str):
+    conn = get_conn()
+    now = datetime.now().isoformat()
+    conn.execute(
+        "UPDATE projects SET current_sub_phase = ?, updated_at = ? WHERE id = ?",
+        (sub_phase_key, now, project_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+# ── Phase outputs (factcheck / proposal_outline / mockup) ────────────────────
+
 def save_phase_output(project_id: int, phase: str, output_html: str) -> int:
     conn = get_conn()
     now = datetime.now().isoformat()
-    # deactivate previous outputs for this phase
     conn.execute(
         "UPDATE phase_outputs SET status = 'superseded' WHERE project_id = ? AND phase = ? AND status = 'pending'",
         (project_id, phase),
@@ -121,11 +159,16 @@ def get_latest_phase_output(project_id: int, phase: str) -> Optional[dict]:
 def approve_phase_output(output_id: int):
     conn = get_conn()
     now = datetime.now().isoformat()
-    conn.execute(
-        "UPDATE phase_outputs SET status = 'approved', updated_at = ? WHERE id = ?",
-        (now, output_id),
-    )
+    row = conn.execute("SELECT project_id, phase FROM phase_outputs WHERE id = ?", (output_id,)).fetchone()
+    conn.execute("UPDATE phase_outputs SET status = 'approved', updated_at = ? WHERE id = ?", (now, output_id))
     conn.commit()
+    if row:
+        project_id, phase = row["project_id"], row["phase"]
+        idx = MAIN_PHASE_ORDER.index(phase) if phase in MAIN_PHASE_ORDER else -1
+        if idx >= 0 and idx + 1 < len(MAIN_PHASE_ORDER):
+            next_phase = MAIN_PHASE_ORDER[idx + 1]
+            conn.execute("UPDATE projects SET current_phase = ?, updated_at = ? WHERE id = ?", (next_phase, now, project_id))
+            conn.commit()
     conn.close()
 
 
@@ -145,6 +188,108 @@ def edit_phase_output(output_id: int, instruction: str):
     now = datetime.now().isoformat()
     conn.execute(
         "UPDATE phase_outputs SET status = 'edit_requested', edit_instruction = ?, updated_at = ? WHERE id = ?",
+        (instruction, now, output_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+# ── Sub-phase outputs (planning phase) ───────────────────────────────────────
+
+def save_sub_phase_output(project_id: int, key: str, html: str) -> int:
+    conn = get_conn()
+    now = datetime.now().isoformat()
+    conn.execute(
+        "UPDATE sub_phase_outputs SET status = 'superseded' WHERE project_id = ? AND sub_phase_key = ? AND status IN ('pending', 'edit_requested')",
+        (project_id, key),
+    )
+    cur = conn.execute(
+        "INSERT INTO sub_phase_outputs (project_id, sub_phase_key, output_html, status, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?)",
+        (project_id, key, html, now, now),
+    )
+    output_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return output_id
+
+
+def get_latest_sub_phase_output(project_id: int, key: str) -> Optional[dict]:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT * FROM sub_phase_outputs WHERE project_id = ? AND sub_phase_key = ? AND status != 'superseded' ORDER BY created_at DESC LIMIT 1",
+        (project_id, key),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_all_sub_phase_outputs(project_id: int) -> Dict[str, dict]:
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT * FROM sub_phase_outputs WHERE project_id = ? AND status != 'superseded' ORDER BY created_at DESC",
+        (project_id,),
+    ).fetchall()
+    conn.close()
+    result = {}
+    for row in rows:
+        d = dict(row)
+        key = d["sub_phase_key"]
+        if key not in result:
+            result[key] = d
+    return result
+
+
+def get_approved_sub_phase_html(project_id: int) -> Dict[str, str]:
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT sub_phase_key, output_html FROM sub_phase_outputs WHERE project_id = ? AND status = 'approved'",
+        (project_id,),
+    ).fetchall()
+    conn.close()
+    return {row["sub_phase_key"]: row["output_html"] for row in rows}
+
+
+def approve_sub_phase_output(output_id: int) -> str:
+    """Approve sub-phase output. Returns next sub-phase key or 'done'."""
+    conn = get_conn()
+    now = datetime.now().isoformat()
+    row = conn.execute("SELECT project_id, sub_phase_key FROM sub_phase_outputs WHERE id = ?", (output_id,)).fetchone()
+    conn.execute("UPDATE sub_phase_outputs SET status = 'approved', updated_at = ? WHERE id = ?", (now, output_id))
+    conn.commit()
+
+    next_key = "done"
+    if row:
+        project_id = row["project_id"]
+        key = row["sub_phase_key"]
+        idx = SUB_PHASES.index(key) if key in SUB_PHASES else -1
+        if idx >= 0 and idx + 1 < len(SUB_PHASES):
+            next_key = SUB_PHASES[idx + 1]
+            conn.execute("UPDATE projects SET current_sub_phase = ?, updated_at = ? WHERE id = ?", (next_key, now, project_id))
+        else:
+            # All sub-phases done → advance to factcheck
+            conn.execute("UPDATE projects SET current_phase = 'factcheck', current_sub_phase = 'why_background', updated_at = ? WHERE id = ?", (now, project_id))
+            next_key = "done"
+        conn.commit()
+    conn.close()
+    return next_key
+
+
+def reject_sub_phase_output(output_id: int, comment: str):
+    conn = get_conn()
+    now = datetime.now().isoformat()
+    conn.execute(
+        "UPDATE sub_phase_outputs SET status = 'rejected', review_comment = ?, updated_at = ? WHERE id = ?",
+        (comment, now, output_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def edit_sub_phase_output(output_id: int, instruction: str):
+    conn = get_conn()
+    now = datetime.now().isoformat()
+    conn.execute(
+        "UPDATE sub_phase_outputs SET status = 'edit_requested', edit_instruction = ?, updated_at = ? WHERE id = ?",
         (instruction, now, output_id),
     )
     conn.commit()
