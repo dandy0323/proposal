@@ -81,7 +81,16 @@ def run(planning_html: str) -> str:
                         "content": search_result,
                     })
 
-            messages.append({"role": "assistant", "content": response.content})
+            assistant_content = []
+            for block in response.content:
+                if block.type == "text":
+                    assistant_content.append({"type": "text", "text": block.text})
+                elif block.type == "tool_use":
+                    assistant_content.append({
+                        "type": "tool_use", "id": block.id,
+                        "name": block.name, "input": block.input,
+                    })
+            messages.append({"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
 
         else:

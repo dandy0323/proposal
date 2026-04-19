@@ -60,12 +60,30 @@ def _search(query: str) -> str:
         return f"検索エラー: {e}"
 
 
+def _blocks_to_dicts(content) -> list:
+    """Convert SDK ContentBlock objects to plain dicts for message history."""
+    result = []
+    for block in content:
+        if block.type == "text":
+            result.append({"type": "text", "text": block.text})
+        elif block.type == "tool_use":
+            result.append({
+                "type": "tool_use",
+                "id": block.id,
+                "name": block.name,
+                "input": block.input,
+            })
+        else:
+            result.append({"type": block.type})
+    return result
+
+
 def _run_with_tools(system: str, user_msg: str) -> str:
-    """Run Claude with Tavily tool use loop."""
+    """Run Claude with Tavily tool use loop (max 8 iterations)."""
     client = _get_anthropic()
     messages = [{"role": "user", "content": user_msg}]
 
-    while True:
+    for _ in range(8):
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=16000,
@@ -83,13 +101,14 @@ def _run_with_tools(system: str, user_msg: str) -> str:
                         "tool_use_id": block.id,
                         "content": search_result,
                     })
-            messages.append({"role": "assistant", "content": response.content})
+            messages.append({"role": "assistant", "content": _blocks_to_dicts(response.content)})
             messages.append({"role": "user", "content": tool_results})
         else:
             for block in response.content:
                 if hasattr(block, "text"):
                     return _strip(block.text)
             return ""
+    return ""
 
 
 def _run_simple(system: str, user_msg: str) -> str:

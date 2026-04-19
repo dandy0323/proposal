@@ -104,7 +104,11 @@ async def run_sub_phase(req: RunSubPhaseRequest):
         edit_instruction = existing.get("edit_instruction")
         previous_html = existing.get("output_html")
 
-    html = sp.run(key, form_data, approved_outputs, previous_html, edit_instruction)
+    try:
+        html = sp.run(key, form_data, approved_outputs, previous_html, edit_instruction)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
     output_id = db.save_sub_phase_output(req.project_id, key, html)
     return {"output_id": output_id, "html": html}
 
@@ -139,11 +143,15 @@ async def deep_dive(req: DeepDiveRequest):
     if not existing:
         raise HTTPException(status_code=400, detail="why_market output not found. Run the agent first.")
 
-    html = sp.run(
-        key, form_data, approved_outputs,
-        previous_output=existing.get("output_html"),
-        deep_dive_request=req.deep_dive_request,
-    )
+    try:
+        html = sp.run(
+            key, form_data, approved_outputs,
+            previous_output=existing.get("output_html"),
+            deep_dive_request=req.deep_dive_request,
+        )
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
     output_id = db.save_sub_phase_output(req.project_id, key, html)
     return {"output_id": output_id, "html": html}
 
@@ -166,7 +174,13 @@ async def run_agent(req: RunAgentRequest):
         edit_instruction = existing.get("edit_instruction")
         previous_html = existing.get("output_html")
 
-    html = _run_phase_agent(phase, form_data, req.project_id, previous_html, edit_instruction)
+    try:
+        html = _run_phase_agent(phase, form_data, req.project_id, previous_html, edit_instruction)
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
     output_id = db.save_phase_output(req.project_id, phase, html)
     return {"output_id": output_id, "html": html}
 
