@@ -1,6 +1,7 @@
 from typing import Optional, Dict
 import anthropic
 import os
+import time
 from tavily import TavilyClient
 
 from backend.constants import SUB_PHASE_LABELS
@@ -48,16 +49,30 @@ def _get_tavily():
 
 def _search(query: str) -> str:
     try:
-        result = _get_tavily().search(query=query, max_results=5)
+        result = _get_tavily().search(query=query, max_results=3)
         lines = []
         for r in result.get("results", []):
             lines.append(f"タイトル: {r.get('title', '')}")
             lines.append(f"URL: {r.get('url', '')}")
-            lines.append(f"内容: {r.get('content', '')[:600]}")
+            lines.append(f"内容: {r.get('content', '')[:300]}")
             lines.append("---")
         return "\n".join(lines) if lines else "検索結果なし"
     except Exception as e:
         return f"検索エラー: {e}"
+
+
+def _create_with_retry(client, **kwargs):
+    """API call with retry on 429 rate limit errors."""
+    for attempt in range(3):
+        try:
+            return client.messages.create(**kwargs)
+        except anthropic.RateLimitError as e:
+            if attempt < 2:
+                wait_sec = 60 * (attempt + 1)
+                print(f"Rate limit hit. Waiting {wait_sec}s before retry {attempt + 2}/3...")
+                time.sleep(wait_sec)
+            else:
+                raise
 
 
 def _blocks_to_dicts(content) -> list:
@@ -83,10 +98,11 @@ def _run_with_tools(system: str, user_msg: str) -> str:
     client = _get_anthropic()
     messages = [{"role": "user", "content": user_msg}]
 
-    for _ in range(8):
-        response = client.messages.create(
+    for _ in range(5):
+        response = _create_with_retry(
+            client,
             model="claude-sonnet-4-6",
-            max_tokens=16000,
+            max_tokens=8000,
             system=system,
             tools=TOOLS,
             messages=messages,
@@ -113,9 +129,10 @@ def _run_with_tools(system: str, user_msg: str) -> str:
 
 def _run_simple(system: str, user_msg: str) -> str:
     """Run Claude without tools."""
-    response = _get_anthropic().messages.create(
+    response = _create_with_retry(
+        _get_anthropic(),
         model="claude-sonnet-4-6",
-        max_tokens=16000,
+        max_tokens=8000,
         system=system,
         messages=[{"role": "user", "content": user_msg}],
     )
@@ -156,7 +173,7 @@ def _approved_context(approved: Dict[str, str]) -> str:
     parts = []
     for key, html in approved.items():
         label = SUB_PHASE_LABELS.get(key, key)
-        parts.append(f"### {label}\n{html[:3000]}")
+        parts.append(f"### {label}\n{html[:1500]}")
     return "\n\n".join(parts)
 
 
