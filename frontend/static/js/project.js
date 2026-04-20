@@ -1,24 +1,38 @@
 // ── Utilities ──────────────────────────────────────────────────────────────────
 
-function autoResizeIframe(iframe, minHeight) {
-  function measure() {
-    try {
-      const doc = iframe.contentDocument || iframe.contentWindow.document;
-      const h = Math.max(
-        doc.body.scrollHeight || 0,
-        doc.body.offsetHeight || 0,
-        doc.documentElement.scrollHeight || 0,
-        doc.documentElement.offsetHeight || 0
-      );
-      if (h > 100) iframe.style.height = Math.max(minHeight, h + 40) + 'px';
-    } catch (_) {}
+// postMessage-based iframe auto-resize: injects a reporter script into the HTML
+// so the iframe itself reports its height after all JS (Chart.js etc.) runs.
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.__iframeResize) {
+    const iframe = document.getElementById(e.data.__iframeResize);
+    if (iframe && e.data.height > 100) {
+      const min = parseInt(iframe.dataset.minH || '500');
+      iframe.style.height = Math.max(min, e.data.height + 40) + 'px';
+    }
   }
-  iframe.onload = () => {
-    measure();
-    // Re-measure after JS (Chart.js etc.) has rendered
-    setTimeout(measure, 800);
-    setTimeout(measure, 2000);
-  };
+});
+
+function loadIframe(iframe, html, minHeight) {
+  iframe.dataset.minH = minHeight;
+  const reporter = `<script>
+(function(){
+  var id = '${iframe.id}';
+  function report(){
+    var h = Math.max(
+      document.body ? document.body.scrollHeight : 0,
+      document.body ? document.body.offsetHeight : 0,
+      document.documentElement.scrollHeight,
+      document.documentElement.offsetHeight
+    );
+    window.parent.postMessage({__iframeResize: id, height: h}, '*');
+  }
+  window.addEventListener('load', function(){ report(); setTimeout(report,600); setTimeout(report,2000); setTimeout(report,5000); });
+})();
+<\/script>`;
+  const modified = /<\/body>/i.test(html)
+    ? html.replace(/<\/body>/i, reporter + '</body>')
+    : html + reporter;
+  iframe.src = URL.createObjectURL(new Blob([modified], { type: 'text/html' }));
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -236,9 +250,7 @@ function selectSubPhase(key) {
   if (output && output.output_html) {
     emptyState.classList.add('hidden');
     iframe.classList.remove('hidden');
-    const blob = new Blob([output.output_html], { type: 'text/html' });
-    autoResizeIframe(iframe, 500);
-    iframe.src = URL.createObjectURL(blob);
+    loadIframe(iframe, output.output_html, 500);
   } else {
     iframe.classList.add('hidden');
     iframe.src = 'about:blank';
@@ -409,8 +421,7 @@ function showOutput(output, phase) {
 
   const iframe = document.getElementById('output-iframe');
   const blob = new Blob([output.output_html], { type: 'text/html' });
-  autoResizeIframe(iframe, 600);
-  iframe.src = URL.createObjectURL(blob);
+  loadIframe(iframe, output.output_html, 600);
 
   const reviewPanel = document.getElementById('review-panel');
   if (output.status === 'approved') {
