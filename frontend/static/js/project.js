@@ -1,3 +1,26 @@
+// ── Utilities ──────────────────────────────────────────────────────────────────
+
+function autoResizeIframe(iframe, minHeight) {
+  function measure() {
+    try {
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      const h = Math.max(
+        doc.body.scrollHeight || 0,
+        doc.body.offsetHeight || 0,
+        doc.documentElement.scrollHeight || 0,
+        doc.documentElement.offsetHeight || 0
+      );
+      if (h > 100) iframe.style.height = Math.max(minHeight, h + 40) + 'px';
+    } catch (_) {}
+  }
+  iframe.onload = () => {
+    measure();
+    // Re-measure after JS (Chart.js etc.) has rendered
+    setTimeout(measure, 800);
+    setTimeout(measure, 2000);
+  };
+}
+
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const PHASES = ['planning', 'factcheck', 'proposal_outline', 'mockup', 'done'];
@@ -214,14 +237,8 @@ function selectSubPhase(key) {
     emptyState.classList.add('hidden');
     iframe.classList.remove('hidden');
     const blob = new Blob([output.output_html], { type: 'text/html' });
+    autoResizeIframe(iframe, 500);
     iframe.src = URL.createObjectURL(blob);
-    iframe.style.height = '520px';
-    iframe.onload = () => {
-      try {
-        const h = iframe.contentDocument.body.scrollHeight;
-        iframe.style.height = Math.max(400, h + 32) + 'px';
-      } catch (_) {}
-    };
   } else {
     iframe.classList.add('hidden');
     iframe.src = 'about:blank';
@@ -392,13 +409,8 @@ function showOutput(output, phase) {
 
   const iframe = document.getElementById('output-iframe');
   const blob = new Blob([output.output_html], { type: 'text/html' });
+  autoResizeIframe(iframe, 600);
   iframe.src = URL.createObjectURL(blob);
-  iframe.onload = () => {
-    try {
-      const h = iframe.contentDocument.body.scrollHeight;
-      iframe.style.height = Math.max(600, h + 32) + 'px';
-    } catch (_) {}
-  };
 
   const reviewPanel = document.getElementById('review-panel');
   if (output.status === 'approved') {
