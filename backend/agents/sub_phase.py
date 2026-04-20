@@ -203,46 +203,64 @@ def _why_background(form_data, approved, previous_output, edit_instruction):
 
 
 def _why_market(form_data, approved, previous_output, edit_instruction, deep_dive_request=None):
-    system = f"""あなたは市場調査・競合分析の専門家です。
-Web検索ツールを活用して徹底的な市場・競合調査を行い、詳細なレポートHTMLを作成してください。
+    industry = form_data.get("industry", "")
+    competitors = form_data.get("competitors", "")
 
-## 調査内容
-1. **市場規模と成長性**: 実際の市場規模データを検索して取得し、数値を明記する
-2. **競合サービス分析**: ユーザーが指定した競合（および類似サービス）について以下を調査:
-   - 主要機能一覧（スクリーンショットや機能比較表で表現）
-   - ユーザーレビュー・評判・評価（実際のレビューサイトから取得）
-   - 強み（Strengths）と弱み（Weaknesses）
-   - 料金体系・ビジネスモデル
-3. **市場トレンド・技術動向**: 業界の最新トレンドを調査
+    system = f"""あなたは市場調査・競合分析の専門家です。
+提供されたWeb調査結果をもとに、詳細な市場・競合分析レポートHTMLを作成してください。
+
+## 含める内容
+1. **市場規模と成長性**: 調査結果の数値を引用して明記する
+2. **競合サービス分析**: 機能比較表・強弱・料金体系
+3. **市場トレンド・技術動向**
 
 ## チャート仕様
-- 市場規模推移: 実際の数値を使ったbarまたはlineチャートで描画（必ず具体的な数値を設定）
-- 競合比較レーダーチャート: 機能充実度・価格競争力・UX・ブランド力などを数値化（5段階評価）
+- 市場規模推移: 実際の数値を使ったbarまたはlineチャート
+- 競合比較レーダーチャート: 機能充実度・価格競争力・UX・ブランド力を5段階評価
 {CHART_INSTRUCTIONS}
 {HTML_RULES}"""
 
-    competitors = form_data.get("competitors", "")
-    industry = form_data.get("industry", "")
-
     if deep_dive_request and previous_output:
+        # Deep-dive: search for the specific request
+        search_results = _search(deep_dive_request)
         user = f"""## プロジェクト情報
 {_form_summary(form_data)}
 
 ## 追加深掘り調査リクエスト
 {deep_dive_request}
 
-## 既存レポート（追記対象）
-{previous_output[:6000]}
+## 追加調査結果
+{search_results}
 
-上記の追加調査リクエストについてWeb検索で徹底調査し、既存HTMLの末尾に「## 追加深掘り調査結果」セクションを追記した完全なHTMLを返してください。"""
+## 既存レポート（追記対象）
+{previous_output[:4000]}
+
+上記の調査結果をもとに、既存HTMLの末尾に「追加深掘り調査結果」セクションを追記した完全なHTMLを返してください。"""
     else:
+        # Pre-fetch searches upfront (no tool-use loop)
+        queries = [f"{industry} 市場規模 成長率 2024"]
+        if competitors:
+            for comp in competitors.replace("、", ",").replace("・", ",").split(",")[:3]:
+                comp = comp.strip()
+                if comp:
+                    queries.append(f"{comp} 機能 料金 評判")
+        queries.append(f"{industry} 市場トレンド 最新")
+
+        search_section = ""
+        for q in queries[:4]:
+            result = _search(q)
+            search_section += f"\n### 検索: {q}\n{result}\n"
+
         user = f"""## プロジェクト情報
 {_form_summary(form_data)}
 
-業種「{industry}」の市場規模・競合「{competitors}」を中心に徹底調査し、市場・競合分析レポートHTMLを作成してください。
-各競合については機能一覧・ユーザー評価・強弱を必ずWeb検索で調査してください。{_edit_block(previous_output, edit_instruction)}"""
+## Web調査結果
+{search_section}
+{_edit_block(previous_output, edit_instruction)}
 
-    return _run_with_tools(system, user)
+上記の調査結果をもとに、市場・競合分析レポートHTMLを作成してください。"""
+
+    return _run_simple(system, user)
 
 
 def _why_business_model(form_data, approved, previous_output, edit_instruction):
@@ -381,18 +399,30 @@ def _how_platform(form_data, approved, previous_output, edit_instruction):
 
 def _how_feasibility(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたは技術調査の専門家です。
-Web検索ツールを活用して「技術的実現可能性（フィジビリティ）」を徹底調査し、詳細なレポートHTMLを作成してください。
+提供されたWeb調査結果をもとに「技術的実現可能性（フィジビリティ）」を分析し、詳細なレポートHTMLを作成してください。
 
 含める内容:
-- 必要な技術要素の調査（AI・AR・位置情報・決済等）と成熟度
+- 必要な技術要素と成熟度
 - 各技術の実装難易度・リスク評価
 - PoC（概念実証）が必要な技術要素の特定
 - オープンソース・ライブラリ・SDKの調査
 - 技術的リスクと対策
 {HTML_RULES}"""
+
+    system_type = form_data.get("system_type", "")
+    # Pre-fetch relevant technology searches
+    queries = [
+        f"{system_type} 開発 技術スタック 2024",
+        f"{system_type} フレームワーク ライブラリ",
+    ]
+    search_section = ""
+    for q in queries:
+        result = _search(q)
+        search_section += f"\n### 検索: {q}\n{result}\n"
+
     ctx = _approved_context(approved)
-    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n技術実現可能性レポートHTMLを作成してください。Web検索で最新の技術情報を調査してください。"
-    return _run_with_tools(system, user)
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}\n\n## Web調査結果\n{search_section}{_edit_block(previous_output, edit_instruction)}\n\n技術実現可能性レポートHTMLを作成してください。"
+    return _run_simple(system, user)
 
 
 def _how_integration(form_data, approved, previous_output, edit_instruction):
