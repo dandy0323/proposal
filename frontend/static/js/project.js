@@ -1,39 +1,25 @@
 // ── Utilities ──────────────────────────────────────────────────────────────────
 
-// postMessage-based iframe auto-resize: injects a reporter script into the HTML
-// so the iframe itself reports its height after all JS (Chart.js etc.) runs.
-window.addEventListener('message', (e) => {
-  if (e.data && e.data.__iframeResize) {
-    const iframe = document.getElementById(e.data.__iframeResize);
-    if (iframe && e.data.height > 100) {
-      const min = parseInt(iframe.dataset.minH || '500');
-      iframe.style.height = Math.max(min, e.data.height + 40) + 'px';
-    }
-  }
-});
-
 function loadIframe(iframe, html, minHeight) {
-  iframe.dataset.minH = minHeight;
-  const reporter = `<script>
-(function(){
-  var id = '${iframe.id}';
-  function report(){
-    var h = Math.max(
-      document.body ? document.body.scrollHeight : 0,
-      document.body ? document.body.offsetHeight : 0,
-      document.documentElement.scrollHeight,
-      document.documentElement.offsetHeight
-    );
-    window.parent.postMessage({__iframeResize: id, height: h}, '*');
-  }
-  window.addEventListener('load', function(){ report(); setTimeout(report,600); setTimeout(report,2000); setTimeout(report,5000); });
-})();
-<\/script>`;
-  const modified = /<\/body>/i.test(html)
-    ? html.replace(/<\/body>/i, reporter + '</body>')
-    : html + reporter;
-  iframe.src = URL.createObjectURL(new Blob([modified], { type: 'text/html' }));
+  // Set a large initial height so tabbed/complex layouts aren't clipped.
+  // After load, shrink to actual content height if smaller.
+  iframe.style.height = '3200px';
+  iframe.onload = () => {
+    try {
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      const h = Math.max(
+        doc.body ? doc.body.scrollHeight : 0,
+        doc.body ? doc.body.offsetHeight : 0,
+        doc.documentElement.scrollHeight,
+        doc.documentElement.offsetHeight
+      );
+      if (h > 200) iframe.style.height = Math.max(minHeight, h + 40) + 'px';
+    } catch (_) {}
+  };
+  iframe.src = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
 }
+
+// ── Constants ──────────────────────────────────────────────────────────────────
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
