@@ -132,7 +132,7 @@ def _run_simple(system: str, user_msg: str) -> str:
     response = _create_with_retry(
         _get_anthropic(),
         model="claude-sonnet-4-6",
-        max_tokens=8000,
+        max_tokens=16000,
         system=system,
         messages=[{"role": "user", "content": user_msg}],
     )
