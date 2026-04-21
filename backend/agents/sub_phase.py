@@ -132,10 +132,15 @@ def _run_simple(system: str, user_msg: str) -> str:
     response = _create_with_retry(
         _get_anthropic(),
         model="claude-sonnet-4-6",
-        max_tokens=16000,
+        max_tokens=32000,
         system=system,
         messages=[{"role": "user", "content": user_msg}],
     )
+    if response.stop_reason == "max_tokens":
+        raise ValueError(
+            "出力がトークン上限（32000）に達し、HTMLが途中で切れました。"
+            "プロンプトの内容を減らすか、エージェントを再実行してください。"
+        )
     return _strip(response.content[0].text)
 
 
@@ -286,12 +291,21 @@ def _who_persona(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはUXリサーチャー・マーケターです。
 「ペルソナ定義とユーザー理解」を深掘り分析し、詳細なレポートHTMLを作成してください。
 
-含める内容:
-- メインペルソナ（2〜3名）の詳細プロフィール（属性・ライフスタイル・ITリテラシー・1日の流れ）
-- ペインポイント（課題・不満）の詳細
-- ゲインポイント（欲求・期待）の詳細
-- ユーザーインタビュー想定Q&A
-- ペルソナごとの利用シナリオ
+## ペルソナ数：必ず2名のみ（超過禁止）
+ターゲットユーザーを代表する最重要ペルソナを2名選定する。
+
+## 各ペルソナに含める内容（2名分）:
+- 基本プロフィール（氏名・年齢・職業・居住地・ITリテラシー）
+- ライフスタイル・価値観
+- 1日の流れ（主要タイムライン）
+- ペインポイント（課題・不満）3〜5項目
+- ゲインポイント（欲求・期待）3〜5項目
+- 代表的なコメント（ペルソナの声）
+
+## 共通セクション（ペルソナの後に1回だけ）:
+- Pain/Gain分析マトリクス
+- ユーザーインタビュー想定Q&A（各ペルソナ2問ずつ計4問）
+- 主要利用シナリオ（2〜3シナリオ）
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nペルソナ定義レポートHTMLを作成してください。"
