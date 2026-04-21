@@ -1,9 +1,8 @@
 // ── Utilities ──────────────────────────────────────────────────────────────────
 
 function loadIframe(iframe, html, minHeight) {
-  // Set a large initial height so tabbed/complex layouts aren't clipped.
-  // After load, shrink to actual content height if smaller.
-  iframe.style.height = '3200px';
+  // Start with a very large height so content renders fully before measuring.
+  iframe.style.height = '9000px';
   iframe.onload = () => {
     try {
       const doc = iframe.contentDocument || iframe.contentWindow.document;
@@ -13,8 +12,10 @@ function loadIframe(iframe, html, minHeight) {
         doc.documentElement.scrollHeight,
         doc.documentElement.offsetHeight
       );
-      if (h > 200) iframe.style.height = Math.max(minHeight, h + 40) + 'px';
-    } catch (_) {}
+      iframe.style.height = Math.max(minHeight, h + 40) + 'px';
+    } catch (_) {
+      iframe.style.height = Math.max(minHeight, 3000) + 'px';
+    }
   };
   iframe.src = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
 }
