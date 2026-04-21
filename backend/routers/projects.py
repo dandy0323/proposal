@@ -109,8 +109,9 @@ async def run_sub_phase(req: RunSubPhaseRequest):
     except Exception as e:
         import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+    truncated, html = _pop_truncation_marker(html)
     output_id = db.save_sub_phase_output(req.project_id, key, html)
-    return {"output_id": output_id, "html": html}
+    return {"output_id": output_id, "html": html, "truncated": truncated}
 
 
 @router.post("/sub-phase-review")
@@ -226,6 +227,14 @@ def _run_phase_agent(
         return mockup.run(form_data, outline_output["output_html"], previous_html, edit_instruction)
 
     raise HTTPException(status_code=400, detail=f"Unknown phase: {phase}")
+
+
+def _pop_truncation_marker(html: str):
+    """Returns (is_truncated, clean_html)."""
+    marker = "<!-- __TRUNCATED__ -->"
+    if marker in html:
+        return True, html.replace(marker, "").strip()
+    return False, html
 
 
 def _combine_sub_phase_html(approved: dict) -> str:

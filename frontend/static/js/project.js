@@ -261,6 +261,7 @@ function selectSubPhase(key) {
   }
   document.getElementById('sub-reject-form').classList.add('hidden');
   document.getElementById('sub-edit-form').classList.add('hidden');
+  document.getElementById('sub-truncation-banner').classList.add('hidden');
 
   // Deep-dive panel: why_market only, when pending, on current active sub-phase
   const deepDivePanel = document.getElementById('deep-dive-panel');
@@ -292,6 +293,10 @@ async function runSubPhase(key) {
     subPhaseOutputs[key] = { id: data.output_id, output_html: data.html, status: 'pending', sub_phase_key: key };
     document.getElementById('sub-run-status').textContent = '完了';
     selectSubPhase(key);
+    if (data.truncated) {
+      document.getElementById('sub-truncation-banner').classList.remove('hidden');
+      document.getElementById('sub-review-panel').classList.add('hidden');
+    }
   } catch (e) {
     alert('通信エラー: ' + e.message);
   } finally {
@@ -479,6 +484,15 @@ async function submitReview(action, comment = '', editInstruction = '') {
 
 // Sub-phase controls
 document.getElementById('btn-sub-run').addEventListener('click', () => runSubPhase(selectedSubPhase));
+
+document.getElementById('btn-truncation-proceed').addEventListener('click', () => {
+  document.getElementById('sub-truncation-banner').classList.add('hidden');
+  document.getElementById('sub-review-panel').classList.remove('hidden');
+});
+document.getElementById('btn-truncation-rerun').addEventListener('click', () => {
+  document.getElementById('sub-truncation-banner').classList.add('hidden');
+  runSubPhase(selectedSubPhase);
+});
 document.getElementById('btn-sub-approve').addEventListener('click', () => reviewSubPhase('approve'));
 
 document.getElementById('btn-sub-reject-toggle').addEventListener('click', () => {

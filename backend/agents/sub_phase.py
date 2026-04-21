@@ -128,7 +128,7 @@ def _run_with_tools(system: str, user_msg: str) -> str:
 
 
 def _run_simple(system: str, user_msg: str) -> str:
-    """Run Claude without tools."""
+    """Run Claude without tools. Appends truncation marker if output was cut off."""
     response = _create_with_retry(
         _get_anthropic(),
         model="claude-sonnet-4-6",
@@ -136,12 +136,10 @@ def _run_simple(system: str, user_msg: str) -> str:
         system=system,
         messages=[{"role": "user", "content": user_msg}],
     )
+    html = _strip(response.content[0].text)
     if response.stop_reason == "max_tokens":
-        raise ValueError(
-            "出力がトークン上限（32000）に達し、HTMLが途中で切れました。"
-            "プロンプトの内容を減らすか、エージェントを再実行してください。"
-        )
-    return _strip(response.content[0].text)
+        html += "\n<!-- __TRUNCATED__ -->"
+    return html
 
 
 def _strip(text: str) -> str:
