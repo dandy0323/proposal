@@ -1,8 +1,9 @@
 // ── Utilities ──────────────────────────────────────────────────────────────────
 
 function loadIframe(iframe, html, minHeight) {
-  // Start with a very large height so content renders fully before measuring.
-  iframe.style.height = '9000px';
+  // Use a very large initial height so all content renders before measuring.
+  const INIT_H = 20000;
+  iframe.style.height = INIT_H + 'px';
   iframe.onload = () => {
     try {
       const doc = iframe.contentDocument || iframe.contentWindow.document;
@@ -12,10 +13,14 @@ function loadIframe(iframe, html, minHeight) {
         doc.documentElement.scrollHeight,
         doc.documentElement.offsetHeight
       );
-      iframe.style.height = Math.max(minHeight, h + 40) + 'px';
-    } catch (_) {
-      iframe.style.height = Math.max(minHeight, 3000) + 'px';
-    }
+      // Only shrink when the measurement is clearly below the initial cap
+      if (h > minHeight && h < INIT_H - 500) {
+        iframe.style.height = (h + 40) + 'px';
+      } else if (h <= minHeight) {
+        iframe.style.height = minHeight + 'px';
+      }
+      // If h >= INIT_H - 500, leave at INIT_H (content is very long)
+    } catch (_) {}
   };
   iframe.src = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
 }
