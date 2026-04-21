@@ -1,26 +1,25 @@
 // ── Utilities ──────────────────────────────────────────────────────────────────
 
 function loadIframe(iframe, html, minHeight) {
-  // Use a very large initial height so all content renders before measuring.
-  const INIT_H = 20000;
-  iframe.style.height = INIT_H + 'px';
+  // Start large so all content (including min-h-screen) renders before measuring.
+  iframe.style.height = '20000px';
   iframe.onload = () => {
     try {
       const doc = iframe.contentDocument || iframe.contentWindow.document;
-      const h = Math.max(
-        doc.body ? doc.body.scrollHeight : 0,
-        doc.body ? doc.body.offsetHeight : 0,
-        doc.documentElement.scrollHeight,
-        doc.documentElement.offsetHeight
-      );
-      // Only shrink when the measurement is clearly below the initial cap
-      if (h > minHeight && h < INIT_H - 500) {
-        iframe.style.height = (h + 40) + 'px';
-      } else if (h <= minHeight) {
-        iframe.style.height = minHeight + 'px';
+      // getBoundingClientRect().bottom gives actual rendered position,
+      // unaffected by min-height/height:100% on body or html elements.
+      let maxBottom = minHeight;
+      const els = doc.body.getElementsByTagName('*');
+      for (let i = 0; i < els.length; i++) {
+        try {
+          const b = els[i].getBoundingClientRect().bottom;
+          if (b > maxBottom) maxBottom = b;
+        } catch (_) {}
       }
-      // If h >= INIT_H - 500, leave at INIT_H (content is very long)
-    } catch (_) {}
+      iframe.style.height = (maxBottom + 40) + 'px';
+    } catch (_) {
+      iframe.style.height = minHeight + 'px';
+    }
   };
   iframe.src = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
 }
