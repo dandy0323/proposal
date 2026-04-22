@@ -527,6 +527,38 @@ _HANDLERS = {
 }
 
 
+def continue_from_truncation(truncated_html: str) -> str:
+    """Generate ONLY the missing tail of a truncated HTML output, then merge."""
+    tail = truncated_html[-3000:]  # send only the last 3000 chars as context
+    system = """あなたはHTMLコーディングの専門家です。
+前回の出力がトークン上限で途中で切れました。
+続きのHTMLコードのみを出力してください。
+
+## 厳守ルール
+- 前回出力の末尾から自然につながる続きのHTMLのみを出力する
+- HTMLを最初から書き直さない・重複させない
+- 開いているタグを閉じて、</body></html>で終わらせる
+- 出力はHTMLコードのみ（説明文・コードフェンス不要）"""
+
+    user = f"""以下は前回出力HTMLの末尾部分です（途中で切れています）：
+
+{tail}
+
+上記の続きから再開し、HTMLを完成させてください。"""
+
+    response = _create_with_retry(
+        _get_anthropic(),
+        model="claude-sonnet-4-6",
+        max_tokens=16000,
+        system=system,
+        messages=[{"role": "user", "content": user}],
+    )
+    continuation = _strip(response.content[0].text)
+    # Find overlap: remove any repeated content at the start of continuation
+    # by merging at the last complete tag boundary
+    return truncated_html + "\n" + continuation
+
+
 def run(
     sub_phase_key: str,
     form_data: dict,

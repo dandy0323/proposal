@@ -101,14 +101,19 @@ async def run_sub_phase(req: RunSubPhaseRequest):
     existing = db.get_latest_sub_phase_output(req.project_id, key)
     edit_instruction = None
     previous_html = None
+
     if req.continue_mode and existing and existing.get("output_html"):
-        previous_html = existing.get("output_html")
-        edit_instruction = (
-            "前回の出力がトークン上限に達して途中で切れています。"
-            "上記の前回出力HTMLの続きを生成し、切れた箇所から再開して完全なHTMLを完成させてください。"
-            "前回出力の末尾から自然につながるよう続きを書いてください。"
-        )
-    elif existing and existing.get("status") == "edit_requested":
+        # Continue mode: generate only the missing tail, then merge
+        try:
+            html = sp.continue_from_truncation(existing["output_html"])
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            raise HTTPException(status_code=500, detail=str(e))
+        truncated, html = _pop_truncation_marker(html)
+        output_id = db.save_sub_phase_output(req.project_id, key, html)
+        return {"output_id": output_id, "html": html, "truncated": truncated}
+
+    if existing and existing.get("status") == "edit_requested":
         edit_instruction = existing.get("edit_instruction")
         previous_html = existing.get("output_html")
 
