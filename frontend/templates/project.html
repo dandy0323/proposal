@@ -57,13 +57,31 @@
         <!-- Truncation warning banner -->
         <div id="sub-truncation-banner" class="hidden px-5 py-4 border-t border-orange-200 bg-orange-50 flex-shrink-0">
           <div class="flex items-start gap-3">
-            <span class="text-orange-500 text-lg flex-shrink-0">⚠</span>
+            <svg class="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            </svg>
             <div class="flex-1">
               <p class="text-sm font-semibold text-orange-700 mb-1">出力がトークン上限（32,000）に達しました</p>
-              <p class="text-xs text-orange-600 mb-3">コンテンツが途中で切れている可能性があります。このまま確認・承認するか、破棄して再実行してください。</p>
-              <div class="flex gap-2">
-                <button id="btn-truncation-proceed" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">このまま確認に進む</button>
-                <button id="btn-truncation-rerun" class="border border-orange-400 text-orange-600 hover:bg-orange-100 px-4 py-2 rounded-lg text-sm font-medium transition">破棄して再実行</button>
+              <p class="text-xs text-orange-600 mb-3">コンテンツが途中で切れている可能性があります。このまま確認するか、続きから再実行してください。</p>
+              <div class="flex flex-wrap gap-2">
+                <!-- Option 1: Accept as-is -->
+                <button id="btn-truncation-proceed"
+                  class="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                  </svg>
+                  このまま確認に進む
+                  <span class="text-xs opacity-75">（現在の出力を完成版とする）</span>
+                </button>
+                <!-- Option 2: Continue from truncation point -->
+                <button id="btn-truncation-continue"
+                  class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                  </svg>
+                  続きから再実行
+                  <span class="text-xs opacity-75">（切れた箇所から続きを生成）</span>
+                </button>
               </div>
             </div>
           </div>

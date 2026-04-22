@@ -276,13 +276,16 @@ function selectSubPhase(key) {
 
 // ── Sub-phase run ──────────────────────────────────────────────────────────────
 
-async function runSubPhase(key) {
+async function runSubPhase(key, continueMode = false) {
   setSubRunning(true);
+  if (continueMode) {
+    document.getElementById('sub-run-status').textContent = '続きを生成中...';
+  }
   try {
     const res = await fetch('/api/projects/run-sub-phase', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: projectId, sub_phase_key: key }),
+      body: JSON.stringify({ project_id: projectId, sub_phase_key: key, continue_mode: continueMode }),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -489,9 +492,9 @@ document.getElementById('btn-truncation-proceed').addEventListener('click', () =
   document.getElementById('sub-truncation-banner').classList.add('hidden');
   document.getElementById('sub-review-panel').classList.remove('hidden');
 });
-document.getElementById('btn-truncation-rerun').addEventListener('click', () => {
+document.getElementById('btn-truncation-continue').addEventListener('click', () => {
   document.getElementById('sub-truncation-banner').classList.add('hidden');
-  runSubPhase(selectedSubPhase);
+  runSubPhase(selectedSubPhase, true); // continue_mode = true
 });
 document.getElementById('btn-sub-approve').addEventListener('click', () => reviewSubPhase('approve'));
 

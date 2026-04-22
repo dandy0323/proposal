@@ -38,6 +38,7 @@ class RunAgentRequest(BaseModel):
 class RunSubPhaseRequest(BaseModel):
     project_id: int
     sub_phase_key: str
+    continue_mode: bool = False  # True = continue from truncation point
 
 
 class ReviewSubPhaseRequest(BaseModel):
@@ -100,7 +101,14 @@ async def run_sub_phase(req: RunSubPhaseRequest):
     existing = db.get_latest_sub_phase_output(req.project_id, key)
     edit_instruction = None
     previous_html = None
-    if existing and existing.get("status") == "edit_requested":
+    if req.continue_mode and existing and existing.get("output_html"):
+        previous_html = existing.get("output_html")
+        edit_instruction = (
+            "前回の出力がトークン上限に達して途中で切れています。"
+            "上記の前回出力HTMLの続きを生成し、切れた箇所から再開して完全なHTMLを完成させてください。"
+            "前回出力の末尾から自然につながるよう続きを書いてください。"
+        )
+    elif existing and existing.get("status") == "edit_requested":
         edit_instruction = existing.get("edit_instruction")
         previous_html = existing.get("output_html")
 
