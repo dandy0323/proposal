@@ -528,8 +528,32 @@ _HANDLERS = {
 
 
 def continue_from_truncation(truncated_html: str) -> str:
-    """Generate ONLY the missing tail of a truncated HTML output, then merge."""
-    tail = truncated_html[-3000:]  # send only the last 3000 chars as context
+    """Generate ONLY the missing tail using assistant-prefill technique.
+
+    By sending the truncated HTML as the assistant's prior turn, Claude naturally
+    continues from the exact cutoff point without rewriting anything.
+    """
+    base = re.sub(r'\s*</body>\s*</html>\s*$', '', truncated_html.rstrip(), flags=re.IGNORECASE).rstrip()
+    prefill = base[-8000:]
+
+    response = _create_with_retry(
+        _get_anthropic(),
+        model="claude-sonnet-4-6",
+        max_tokens=16000,
+        system="You are completing an HTML document that was cut off mid-generation. Output only the remaining HTML to complete it. No explanations, no code fences.",
+        messages=[
+            {"role": "user", "content": "Complete the HTML document."},
+            {"role": "assistant", "content": prefill},
+        ],
+    )
+    continuation = response.content[0].text
+    if continuation.startswith("```html"):
+        continuation = continuation[7:]
+    elif continuation.startswith("```"):
+        continuation = continuation[3:]
+    if continuation.endswith("```"):
+        continuation = continuation[:-3]
+    return base + continuation
     system = """あなたはHTMLコーディングの専門家です。
 前回の出力がトークン上限で途中で切れました。
 続きのHTMLコードのみを出力してください。
