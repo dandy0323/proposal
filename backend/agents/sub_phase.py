@@ -1,6 +1,7 @@
 from typing import Optional, Dict
 import anthropic
 import os
+import re
 import time
 from tavily import TavilyClient
 
