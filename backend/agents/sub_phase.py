@@ -287,24 +287,21 @@ def _why_business_model(form_data, approved, previous_output, edit_instruction):
 
 
 def _who_persona(form_data, approved, previous_output, edit_instruction):
-    system = f"""あなたはUXリサーチャー・マーケターです。
-「ペルソナ定義とユーザー理解」を深掘り分析し、詳細なレポートHTMLを作成してください。
+    system = f"""あなたはUXリサーチャーです。
+「ペルソナ定義とユーザー理解」のレポートHTMLを作成してください。
 
-## ペルソナ数：必ず3名のみ（超過禁止）
-ターゲットユーザーを代表する最重要ペルソナを3名選定する。
+## ペルソナ数：3名のみ（超過禁止）
 
 ## 各ペルソナに含める内容（3名分）:
-- 基本プロフィール（氏名・年齢・職業・居住地・ITリテラシー）
-- ライフスタイル・価値観
-- 1日の流れ（主要タイムライン）
-- ペインポイント（課題・不満）3〜5項目
-- ゲインポイント（欲求・期待）3〜5項目
-- 代表的なコメント（ペルソナの声）
+- 基本プロフィール（氏名・年齢・職業・ITリテラシー）
+- ペインポイント 3項目
+- ゲインポイント 3項目
+- 代表的なコメント（1文）
 
 ## 共通セクション（ペルソナの後に1回だけ）:
-- Pain/Gain分析マトリクス
-- ユーザーインタビュー想定Q&A（各ペルソナ2問ずつ計4問）
-- 主要利用シナリオ（2〜3シナリオ）
+- Pain/Gain分析マトリクス（表形式）
+- 主要利用シナリオ（2シナリオ・各3行以内）
+
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nペルソナ定義レポートHTMLを作成してください。"
