@@ -529,59 +529,32 @@ _HANDLERS = {
 
 
 def continue_from_truncation(truncated_html: str) -> str:
-    """Generate ONLY the missing tail using assistant-prefill technique.
-
-    By sending the truncated HTML as the assistant's prior turn, Claude naturally
-    continues from the exact cutoff point without rewriting anything.
-    """
+    """Close open HTML tags in a truncated document — no new content generated."""
     base = re.sub(r'\s*</body>\s*</html>\s*$', '', truncated_html.rstrip(), flags=re.IGNORECASE).rstrip()
-    prefill = base[-8000:]
+    tail = base[-2000:]
 
     response = _create_with_retry(
         _get_anthropic(),
         model="claude-sonnet-4-6",
-        max_tokens=16000,
-        system="You are completing an HTML document that was cut off mid-generation. Output only the remaining HTML to complete it. No explanations, no code fences.",
-        messages=[
-            {"role": "user", "content": "Complete the HTML document."},
-            {"role": "assistant", "content": prefill},
-        ],
+        max_tokens=600,
+        system="""You close truncated HTML documents.
+Output ONLY the closing tags needed to make the document valid HTML.
+Rules:
+- NO new paragraphs, headings, list items, tables, or any content
+- NO new research, data, analysis, or descriptions
+- If a word/sentence is cut off, add "..." to end it, then close tags
+- End with </body></html>
+- Output should be 5-30 lines of closing tags maximum""",
+        messages=[{"role": "user", "content": f"Close this truncated HTML:\n\n{tail}"}],
     )
-    continuation = response.content[0].text
-    if continuation.startswith("```html"):
-        continuation = continuation[7:]
-    elif continuation.startswith("```"):
-        continuation = continuation[3:]
-    if continuation.endswith("```"):
-        continuation = continuation[:-3]
-    return base + continuation
-    system = """あなたはHTMLコーディングの専門家です。
-前回の出力がトークン上限で途中で切れました。
-続きのHTMLコードのみを出力してください。
-
-## 厳守ルール
-- 前回出力の末尾から自然につながる続きのHTMLのみを出力する
-- HTMLを最初から書き直さない・重複させない
-- 開いているタグを閉じて、</body></html>で終わらせる
-- 出力はHTMLコードのみ（説明文・コードフェンス不要）"""
-
-    user = f"""以下は前回出力HTMLの末尾部分です（途中で切れています）：
-
-{tail}
-
-上記の続きから再開し、HTMLを完成させてください。"""
-
-    response = _create_with_retry(
-        _get_anthropic(),
-        model="claude-sonnet-4-6",
-        max_tokens=16000,
-        system=system,
-        messages=[{"role": "user", "content": user}],
-    )
-    continuation = _strip(response.content[0].text)
-    # Find overlap: remove any repeated content at the start of continuation
-    # by merging at the last complete tag boundary
-    return truncated_html + "\n" + continuation
+    closing = response.content[0].text.strip()
+    if closing.startswith("```html"):
+        closing = closing[7:]
+    elif closing.startswith("```"):
+        closing = closing[3:]
+    if closing.endswith("```"):
+        closing = closing[:-3]
+    return base + "\n" + closing.strip()
 
 
 def run(
