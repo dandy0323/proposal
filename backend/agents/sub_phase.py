@@ -191,15 +191,13 @@ def _edit_block(previous_output: Optional[str], edit_instruction: Optional[str])
 
 def _why_background(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたは優秀なITコンサルタントです。
-プロジェクトの「背景と目的の明確化」を深掘り分析し、詳細なレポートHTMLを作成してください。
+「背景と目的の明確化」のレポートHTMLを作成してください。
 
-含める内容（それぞれ詳細に）:
-- 解決すべき事業課題の詳細分析（現状のペイン・ボトルネック）
-- 現状（As-Is）と理想状態（To-Be）のギャップ分析
-- このシステムが解決する本質的な問題の定義
-- ビジョン・ミッションとの整合性
-- ステークホルダー分析（誰が影響を受けるか）
-- 成功の定義：KGI / KPI の仮説設定
+含める内容（各項目は簡潔に）:
+- 事業課題と現状のペイン
+- As-Is / To-Be ギャップ分析
+- ステークホルダー分析（主要3者）
+- KGI / KPI の仮説設定
 
 {HTML_RULES}"""
     user = f"## プロジェクト情報\n{_form_summary(form_data)}{_edit_block(previous_output, edit_instruction)}\n\n背景と目的の明確化レポートHTMLを作成してください。"
@@ -269,17 +267,14 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 
 def _why_business_model(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたは事業戦略・ビジネスモデル設計の専門家です。
-「ビジネスモデル・収益化」を深掘り分析し、詳細なレポートHTMLを作成してください。
+「ビジネスモデル・収益化」のレポートHTMLを作成してください。
 
-含める内容:
-- 推奨マネタイズ手法（複数案を比較検討）
-- 収益モデルの詳細設計（価格設定、課金タイミング等）
-- KGI / KPI の設定（ダウンロード数、MAU、CVR、LTV、ARPU等）
+含める内容（各項目は簡潔に）:
+- 推奨マネタイズ手法（2〜3案比較）
+- KGI / KPI の仮説（MAU・CVR・LTV等、主要5指標）
 - 初期投資とランニングコストの概算
-- 損益分岐点の予測（グラフ化）
-- 類似サービスの収益モデルベンチマーク
+- 損益分岐点の予測
 
-{CHART_INSTRUCTIONS}
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nビジネスモデル・収益化レポートHTMLを作成してください。"
@@ -310,14 +305,12 @@ def _who_persona(form_data, approved, previous_output, edit_instruction):
 
 def _who_value(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはプロダクトマネージャーです。
-「提供価値（バリュープロポジション）」を深掘り分析し、詳細なレポートHTMLを作成してください。
+「提供価値（バリュープロポジション）」のレポートHTMLを作成してください。
 
-含める内容:
-- バリュープロポジションキャンバス（ペインリリーバー・ゲインクリエーター・プロダクト&サービス）
-- 競合との差別化ポイント（なぜこのサービスが選ばれるか）
-- ユニークセリングポイント（USP）の言語化
-- ユーザーへの約束（プロミス）の定義
-- 価値提供の優先順位マトリクス
+含める内容（各項目は簡潔に）:
+- バリュープロポジションキャンバス（ペイン・ゲイン・プロダクト）
+- 競合との差別化ポイント（上位3点）
+- USP（ユニークセリングポイント）の言語化
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n提供価値レポートHTMLを作成してください。"
@@ -342,16 +335,14 @@ def _who_ux(form_data, approved, previous_output, edit_instruction):
 
 def _what_features(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはプロダクトマネージャーです。
-「機能洗い出しと優先順位付け」を深掘り分析し、詳細なレポートHTMLを作成してください。
+「機能洗い出しと優先順位付け」のレポートHTMLを作成してください。
 
-含める内容:
-- 全機能リスト（コア機能・周辺機能・将来機能に分類）
-- MoSCoW法による優先順位付け（Must/Should/Could/Won't）
-- MVP（最小実用製品）の定義と根拠
-- 機能ロードマップ（フェーズ別リリース計画）
-- 機能間の依存関係マップ
+含める内容（各項目は簡潔に）:
+- 機能リスト（コア・周辺・将来に分類、各5件以内）
+- MoSCoW優先順位付け
+- MVP の定義
+- フェーズ別リリース計画（3フェーズ）
 
-{CHART_INSTRUCTIONS}
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n機能定義レポートHTMLを作成してください。"
@@ -360,14 +351,13 @@ def _what_features(form_data, approved, previous_output, edit_instruction):
 
 def _what_ia(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはUI/UXデザイナーです。
-「情報設計とUIの方向性」を深掘り分析し、詳細なレポートHTMLを作成してください。
+「情報設計とUIの方向性」のレポートHTMLを作成してください。
 
-含める内容:
-- サイトマップ / 画面一覧（階層構造で表現）
-- 主要画面の画面遷移図（テキストベースで表現）
-- UIデザインのトーン&マナー（カラー・フォント・コンポーネント方針）
-- ナビゲーション設計方針
-- レスポンシブ対応方針（ブレークポイント・レイアウト変化）
+含める内容（各項目は簡潔に）:
+- サイトマップ / 主要画面一覧（階層構造）
+- 主要画面遷移図（テキストベース）
+- UIトーン&マナー（カラー・フォント方針）
+- レスポンシブ対応方針
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n情報設計・UI方向性レポートHTMLを作成してください。"
@@ -376,14 +366,13 @@ def _what_ia(form_data, approved, previous_output, edit_instruction):
 
 def _what_nonfunc(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはシステムアーキテクトです。
-「非機能要件の方向性」を深掘り分析し、詳細なレポートHTMLを作成してください。
+「非機能要件の方向性」のレポートHTMLを作成してください。
 
-含める内容:
-- 性能要件（レスポンスタイム・スループット・同時接続数）
-- 可用性・信頼性要件（稼働率・障害対応）
-- セキュリティ要件（認証・認可・暗号化・個人情報保護）
-- スケーラビリティ要件（想定ユーザー数増加への対応）
-- 運用・保守要件（監視・バックアップ・デプロイ）
+含める内容（各項目は簡潔に、要点のみ）:
+- 性能要件（レスポンスタイム・同時接続数）
+- 可用性・セキュリティ要件
+- スケーラビリティ方針
+- 運用・保守方針
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n非機能要件レポートHTMLを作成してください。"
@@ -392,15 +381,13 @@ def _what_nonfunc(form_data, approved, previous_output, edit_instruction):
 
 def _how_platform(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはシステムアーキテクトです。
-「プラットフォームとアーキテクチャ」を深掘り分析し、詳細なレポートHTMLを作成してください。
+「プラットフォームとアーキテクチャ」のレポートHTMLを作成してください。
 
-含める内容:
-- 推奨プラットフォーム（Web/iOS/Android/両対応）と選定理由
-- 開発方式（ネイティブ/クロスプラットフォーム/PWA等）の比較と推奨
-- システム全体アーキテクチャ図（テキストベースで表現）
-- フロントエンド・バックエンド・DBの技術スタック候補
-- インフラ構成の方向性（クラウドサービス選定）
-- 開発・ステージング・本番環境の構成
+含める内容（各項目は簡潔に）:
+- 推奨プラットフォームと選定理由
+- システムアーキテクチャ概要（テキストベース）
+- 技術スタック候補（FE・BE・DB）
+- インフラ構成の方向性
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nプラットフォーム・アーキテクチャレポートHTMLを作成してください。"
@@ -437,15 +424,13 @@ def _how_feasibility(form_data, approved, previous_output, edit_instruction):
 
 def _how_integration(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはシステムインテグレーションの専門家です。
-「外部連携とデータ」を深掘り分析し、詳細なレポートHTMLを作成してください。
+「外部連携とデータ」のレポートHTMLを作成してください。
 
-含める内容:
-- 外部システム・API連携一覧（連携先・データ種別・通信方式）
-- データフロー図（システム間のデータの流れ）
-- 既存社内システムとの連携設計方針
-- データモデルの概要（主要エンティティと関係）
-- データ移行・初期データ投入の考え方
-- API設計方針（REST/GraphQL等）
+含める内容（各項目は簡潔に）:
+- 外部API・システム連携一覧（上位5件）
+- データフロー概要
+- 主要データモデル（エンティティ3〜5件）
+- API設計方針
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n外部連携・データ設計レポートHTMLを作成してください。"
@@ -454,16 +439,14 @@ def _how_integration(form_data, approved, previous_output, edit_instruction):
 
 def _project_schedule(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはプロジェクトマネージャーです。
-「スケジュールとマイルストーン」を深掘り分析し、詳細なレポートHTMLを作成してください。
+「スケジュールとマイルストーン」のレポートHTMLを作成してください。
 
-含める内容:
-- プロジェクト全体スケジュール（ガントチャート風タイムラインで表現）
-- フェーズ別の作業内容と期間（要件定義→設計→開発→テスト→リリース）
-- 主要マイルストーンと成果物（デリバラブル）
-- フェーズ2・3のロードマップ
-- リスクとなる依存関係・クリティカルパス
+含める内容（各項目は簡潔に）:
+- フェーズ別スケジュール（要件定義→設計→開発→テスト→リリース）
+- 主要マイルストーンと成果物
+- フェーズ2・3のロードマップ概要
+- クリティカルパスとリスク
 
-{CHART_INSTRUCTIONS}
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nスケジュール・マイルストーンレポートHTMLを作成してください。"
@@ -472,16 +455,14 @@ def _project_schedule(form_data, approved, previous_output, edit_instruction):
 
 def _project_budget(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはITプロジェクトのコンサルタントです。
-「予算と体制」を深掘り分析し、詳細なレポートHTMLを作成してください。
+「予算と体制」のレポートHTMLを作成してください。
 
-含める内容:
-- 初期開発費の内訳概算（設計・開発・インフラ・テスト・PM費用）
-- ランニングコストの内訳概算（インフラ・保守・運用・ライセンス）
-- 開発体制案（役割・人数・工数）
-- インハウス vs アウトソーシングの比較
+含める内容（各項目は簡潔に）:
+- 初期開発費の内訳概算
+- ランニングコスト概算
+- 開発体制案（役割・人数）
 - コスト最適化のポイント
 
-{CHART_INSTRUCTIONS}
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n予算・体制レポートHTMLを作成してください。"
@@ -490,14 +471,13 @@ def _project_budget(form_data, approved, previous_output, edit_instruction):
 
 def _project_legal(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたは法務・コンプライアンスの専門家です。
-「法務・コンプライアンス・ガイドライン」を深掘り分析し、詳細なレポートHTMLを作成してください。
+「法務・コンプライアンス」のレポートHTMLを作成してください。
 
-含める内容:
-- 関連法規チェックリスト（個人情報保護法・資金決済法・特定商取引法・著作権法等）
+含める内容（各項目は簡潔に）:
+- 関連法規チェックリスト（主要5〜7法）
 - 業界特有の規制・ガイドライン
-- プラットフォーム規約（App Store / Google Play）の対応事項
 - プライバシーポリシー・利用規約の必要事項
-- 対応が必要な法的リスクの優先度マトリクス
+- 法的リスク優先度マトリクス
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n法務・コンプライアンスレポートHTMLを作成してください。"
