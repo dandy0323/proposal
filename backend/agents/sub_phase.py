@@ -326,14 +326,14 @@ def _who_value(form_data, approved, previous_output, edit_instruction):
 
 def _who_ux(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはUXデザイナーです。
-「UX設計・カスタマージャーニー」を深掘り分析し、詳細なレポートHTMLを作成してください。
+「UX設計・カスタマージャーニー」のレポートHTMLを作成してください。
 
-含める内容:
-- カスタマージャーニーマップ（認知→検討→利用開始→継続→推奨の各フェーズ）
-- 各接点におけるユーザーの感情・行動・思考
-- タッチポイント一覧と改善機会
-- プラットフォーム別（Web/スマホ）UXの最適化方針
-- オンボーディング設計の考え方
+含める内容（各項目は簡潔に）:
+- カスタマージャーニーマップ（認知→検討→利用開始→継続→推奨の5フェーズ、表形式）
+- 主要タッチポイントと改善機会（上位5件）
+- Web/スマホ別UX方針（各3点以内）
+- オンボーディング設計の要点（3点以内）
+
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nUX設計レポートHTMLを作成してください。"
