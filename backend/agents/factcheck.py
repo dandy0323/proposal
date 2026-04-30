@@ -51,6 +51,60 @@ TOOLS = [
 ]
 
 
+def run_single(html: str) -> str:
+    """Factcheck a single sub-phase HTML. Called automatically after fact-heavy sub-phases."""
+    messages = [
+        {
+            "role": "user",
+            "content": (
+                "以下のHTMLに含まれる事実確認が必要な箇所（市場規模・競合情報・統計データ・数値等）を"
+                "Web検索で検証し、誤りや古い情報があればインライン修正してください。"
+                "事実として正しい情報はそのまま保持し、修正がない場合も元のHTMLをそのまま返してください。\n\n"
+                f"```html\n{html[:10000]}\n```"
+            ),
+        }
+    ]
+    anthropic_client = _get_anthropic()
+
+    while True:
+        response = anthropic_client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=16000,
+            system=SYSTEM_PROMPT,
+            tools=TOOLS,
+            messages=messages,
+        )
+        if response.stop_reason == "tool_use":
+            tool_results = []
+            assistant_content = []
+            for block in response.content:
+                if block.type == "text":
+                    assistant_content.append({"type": "text", "text": block.text})
+                elif block.type == "tool_use":
+                    assistant_content.append({
+                        "type": "tool_use", "id": block.id,
+                        "name": block.name, "input": block.input,
+                    })
+                    if block.name == "web_search":
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": _search(block.input.get("query", "")),
+                        })
+            messages.append({"role": "assistant", "content": assistant_content})
+            messages.append({"role": "user", "content": tool_results})
+        else:
+            for block in response.content:
+                if hasattr(block, "text"):
+                    result = block.text.strip()
+                    if result.startswith("```html"):
+                        result = result[7:]
+                    if result.endswith("```"):
+                        result = result[:-3]
+                    return result.strip()
+            return html
+
+
 def run(planning_html: str) -> str:
     messages = [
         {

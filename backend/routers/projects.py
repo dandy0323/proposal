@@ -120,6 +120,16 @@ async def run_sub_phase(req: RunSubPhaseRequest):
         import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
     truncated, html = _pop_truncation_marker(html)
+
+    # Auto-factcheck for fact-heavy sub-phases on first run (not continue/edit)
+    _FACTCHECK_PHASES = {'why_background', 'why_market', 'why_business_model'}
+    if key in _FACTCHECK_PHASES and not req.continue_mode and not edit_instruction and not truncated:
+        from backend.agents import factcheck as fc
+        try:
+            html = fc.run_single(html)
+        except Exception as e:
+            print(f"Auto-factcheck failed for {key}: {e}")
+
     output_id = db.save_sub_phase_output(req.project_id, key, html)
     return {"output_id": output_id, "html": html, "truncated": truncated}
 
