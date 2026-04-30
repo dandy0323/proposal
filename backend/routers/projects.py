@@ -65,6 +65,18 @@ def create_project(req: CreateProjectRequest):
     return {"project_id": project_id}
 
 
+@router.delete("/{project_id}")
+def delete_project(project_id: int):
+    db.delete_project(project_id)
+    return {"status": "ok"}
+
+
+@router.post("/{project_id}/move")
+def move_project(project_id: int, direction: str):
+    db.move_project(project_id, direction)
+    return {"status": "ok"}
+
+
 @router.get("/{project_id}")
 def get_project(project_id: int):
     project = db.get_project(project_id)
@@ -226,14 +238,7 @@ def _run_phase_agent(
     previous_html: Optional[str],
     edit_instruction: Optional[str],
 ) -> str:
-    if phase == "factcheck":
-        approved = db.get_approved_sub_phase_html(project_id)
-        if not approved:
-            raise HTTPException(status_code=400, detail="承認済みの企画・検討フェーズがありません")
-        planning_html = _combine_sub_phase_html(approved)
-        return factcheck.run(planning_html)
-
-    elif phase == "proposal_outline":
+    if phase == "proposal_outline":
         approved = db.get_approved_sub_phase_html(project_id)
         if not approved:
             raise HTTPException(status_code=400, detail="承認済みの企画・検討フェーズがありません")

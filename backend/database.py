@@ -57,13 +57,20 @@ def init_db():
     """)
     conn.commit()
 
-    # Migration: add current_sub_phase column to existing projects tables
-    try:
-        conn.execute("ALTER TABLE projects ADD COLUMN current_sub_phase TEXT DEFAULT 'why_background'")
-        conn.commit()
-    except Exception:
-        pass
+    # Migration: add columns to existing projects tables
+    for sql in [
+        "ALTER TABLE projects ADD COLUMN current_sub_phase TEXT DEFAULT 'why_background'",
+        "ALTER TABLE projects ADD COLUMN sort_order INTEGER DEFAULT 0",
+    ]:
+        try:
+            conn.execute(sql)
+            conn.commit()
+        except Exception:
+            pass
 
+    # Initialize sort_order for existing rows that have 0
+    conn.execute("UPDATE projects SET sort_order = id WHERE sort_order = 0")
+    conn.commit()
     conn.close()
 
 
@@ -95,7 +102,7 @@ def get_project(project_id: int) -> Optional[dict]:
 
 def list_projects() -> List[dict]:
     conn = get_conn()
-    rows = conn.execute("SELECT * FROM projects ORDER BY updated_at DESC").fetchall()
+    rows = conn.execute("SELECT * FROM projects ORDER BY sort_order ASC, id ASC").fetchall()
     conn.close()
     result = []
     for row in rows:
@@ -103,6 +110,38 @@ def list_projects() -> List[dict]:
         d["form_data"] = json.loads(d["form_data"])
         result.append(d)
     return result
+
+
+def delete_project(project_id: int):
+    conn = get_conn()
+    conn.execute("DELETE FROM sub_phase_outputs WHERE project_id = ?", (project_id,))
+    conn.execute("DELETE FROM phase_outputs WHERE project_id = ?", (project_id,))
+    conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+    conn.commit()
+    conn.close()
+
+
+def move_project(project_id: int, direction: str):
+    """Move a project up or down in sort_order."""
+    conn = get_conn()
+    rows = conn.execute("SELECT id, sort_order FROM projects ORDER BY sort_order ASC, id ASC").fetchall()
+    ids = [r["id"] for r in rows]
+    if project_id not in ids:
+        conn.close()
+        return
+    idx = ids.index(project_id)
+    if direction == "up" and idx > 0:
+        swap_id = ids[idx - 1]
+    elif direction == "down" and idx < len(ids) - 1:
+        swap_id = ids[idx + 1]
+    else:
+        conn.close()
+        return
+    orders = {r["id"]: r["sort_order"] for r in rows}
+    conn.execute("UPDATE projects SET sort_order = ? WHERE id = ?", (orders[swap_id], project_id))
+    conn.execute("UPDATE projects SET sort_order = ? WHERE id = ?", (orders[project_id], swap_id))
+    conn.commit()
+    conn.close()
 
 
 def update_project_phase(project_id: int, phase: str):
@@ -266,8 +305,8 @@ def approve_sub_phase_output(output_id: int) -> str:
             next_key = SUB_PHASES[idx + 1]
             conn.execute("UPDATE projects SET current_sub_phase = ?, updated_at = ? WHERE id = ?", (next_key, now, project_id))
         else:
-            # All sub-phases done → advance to factcheck
-            conn.execute("UPDATE projects SET current_phase = 'factcheck', current_sub_phase = 'why_background', updated_at = ? WHERE id = ?", (now, project_id))
+            # All sub-phases done → advance to proposal_outline
+            conn.execute("UPDATE projects SET current_phase = 'proposal_outline', current_sub_phase = 'why_background', updated_at = ? WHERE id = ?", (now, project_id))
             next_key = "done"
         conn.commit()
     conn.close()

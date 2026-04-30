@@ -44,4 +44,4 @@ SUB_PHASE_GROUPS: Dict[str, List[str]] = {
     "計画・制約（Project）": ["project_schedule", "project_budget", "project_legal"],
 }
 
-MAIN_PHASE_ORDER = ["planning", "factcheck", "proposal_outline", "mockup", "done"]
+MAIN_PHASE_ORDER = ["planning", "proposal_outline", "mockup", "done"]

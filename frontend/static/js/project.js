@@ -28,16 +28,14 @@ function loadIframe(iframe, html, minHeight) {
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-const PHASES = ['planning', 'factcheck', 'proposal_outline', 'mockup', 'done'];
+const PHASES = ['planning', 'proposal_outline', 'mockup', 'done'];
 const PHASE_LABELS = {
   planning: '企画・検討',
-  factcheck: 'ファクトチェック',
   proposal_outline: '提案書骨子',
   mockup: 'モック作成',
   done: '完了',
 };
 const RUN_LABELS = {
-  factcheck: 'ファクトチェックを実行',
   proposal_outline: '提案書骨子を作成',
   mockup: 'モックを作成',
 };
