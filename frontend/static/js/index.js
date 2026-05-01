@@ -28,25 +28,20 @@ function renderList() {
     return;
   }
 
-  container.innerHTML = projectList.map((p, idx) => {
+  container.innerHTML = projectList.map((p) => {
     const phase = p.current_phase;
     const badge = `<span class="phase-badge ${PHASE_COLORS[phase] || 'bg-gray-100 text-gray-700'}">${PHASE_LABELS[phase] || phase}</span>`;
     const date = new Date(p.updated_at).toLocaleDateString('ja-JP');
-    const isFirst = idx === 0;
-    const isLast = idx === projectList.length - 1;
 
     return `
-      <div class="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition flex items-stretch">
-        <!-- Reorder buttons -->
-        <div class="flex flex-col border-r border-gray-100 px-1 py-2 gap-1 justify-center">
-          <button onclick="moveProject(${p.id}, 'up')" ${isFirst ? 'disabled' : ''}
-            class="p-1 rounded text-gray-400 ${isFirst ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-100 hover:text-gray-600'} transition">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
-          </button>
-          <button onclick="moveProject(${p.id}, 'down')" ${isLast ? 'disabled' : ''}
-            class="p-1 rounded text-gray-400 ${isLast ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-100 hover:text-gray-600'} transition">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-          </button>
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition flex items-stretch" data-id="${p.id}">
+        <!-- Drag handle -->
+        <div class="drag-handle flex items-center border-r border-gray-100 px-3 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 transition">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+            <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+            <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+            <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+          </svg>
         </div>
         <!-- Project info (clickable) -->
         <a href="/project/${p.id}" class="flex-1 p-5 block">
@@ -70,6 +65,29 @@ function renderList() {
         </div>
       </div>`;
   }).join('');
+
+  initSortable();
+}
+
+function initSortable() {
+  const container = document.getElementById('project-list');
+  if (container._sortable) {
+    container._sortable.destroy();
+  }
+  container._sortable = Sortable.create(container, {
+    handle: '.drag-handle',
+    animation: 150,
+    ghostClass: 'opacity-40',
+    onEnd: async () => {
+      const orderedIds = [...container.querySelectorAll('[data-id]')].map(el => parseInt(el.dataset.id));
+      await fetch('/api/projects/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ordered_ids: orderedIds }),
+      });
+      projectList = projectList.sort((a, b) => orderedIds.indexOf(a.id) - orderedIds.indexOf(b.id));
+    },
+  });
 }
 
 async function deleteProject(id, name) {
@@ -80,13 +98,6 @@ async function deleteProject(id, name) {
     renderList();
   } else {
     alert('削除に失敗しました');
-  }
-}
-
-async function moveProject(id, direction) {
-  const res = await fetch(`/api/projects/${id}/move?direction=${direction}`, { method: 'POST' });
-  if (res.ok) {
-    await loadProjects();
   }
 }
 

@@ -48,6 +48,10 @@ class ReviewSubPhaseRequest(BaseModel):
     edit_instruction: str = ""
 
 
+class ReorderRequest(BaseModel):
+    ordered_ids: list
+
+
 class DeepDiveRequest(BaseModel):
     project_id: int
     deep_dive_request: str
@@ -74,6 +78,12 @@ def delete_project(project_id: int):
 @router.post("/{project_id}/move")
 def move_project(project_id: int, direction: str):
     db.move_project(project_id, direction)
+    return {"status": "ok"}
+
+
+@router.post("/reorder")
+def reorder_projects(req: ReorderRequest):
+    db.reorder_projects(req.ordered_ids)
     return {"status": "ok"}
 
 

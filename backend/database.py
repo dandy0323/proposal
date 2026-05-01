@@ -71,6 +71,12 @@ def init_db():
     # Initialize sort_order for existing rows that have 0
     conn.execute("UPDATE projects SET sort_order = id WHERE sort_order = 0")
     conn.commit()
+
+    # Migration: projects stuck at removed 'factcheck' phase → advance to proposal_outline
+    conn.execute(
+        "UPDATE projects SET current_phase = 'proposal_outline', updated_at = datetime('now') WHERE current_phase = 'factcheck'"
+    )
+    conn.commit()
     conn.close()
 
 
@@ -140,6 +146,15 @@ def move_project(project_id: int, direction: str):
     orders = {r["id"]: r["sort_order"] for r in rows}
     conn.execute("UPDATE projects SET sort_order = ? WHERE id = ?", (orders[swap_id], project_id))
     conn.execute("UPDATE projects SET sort_order = ? WHERE id = ?", (orders[project_id], swap_id))
+    conn.commit()
+    conn.close()
+
+
+def reorder_projects(ordered_ids: List[int]):
+    """Set sort_order based on the provided ordered list of project IDs."""
+    conn = get_conn()
+    for pos, pid in enumerate(ordered_ids):
+        conn.execute("UPDATE projects SET sort_order = ? WHERE id = ?", (pos, pid))
     conn.commit()
     conn.close()
 
