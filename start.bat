@@ -46,5 +46,9 @@ echo   http://localhost:8000
 echo.
 echo サーバーを停止するには Ctrl+C を押してください。
 echo.
+
+REM 自動pull（30秒ごとにバックグラウンドで実行）
+start "Auto Pull" /min watch_pull.bat
+
 python -m uvicorn main:app --reload --port 8000
 pause
