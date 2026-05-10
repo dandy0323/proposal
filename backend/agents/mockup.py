@@ -63,8 +63,8 @@ def run(
     user_content = _build_user_message(form_data, proposal_outline_html, previous_output, edit_instruction)
 
     response = _get_client().messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=64000,
+        model="claude-haiku-4-5-20251001",
+        max_tokens=8192,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_content}],
     )

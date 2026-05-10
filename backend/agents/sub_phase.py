@@ -102,8 +102,8 @@ def _run_with_tools(system: str, user_msg: str) -> str:
     for _ in range(5):
         response = _create_with_retry(
             client,
-            model="claude-sonnet-4-6",
-            max_tokens=8000,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=8192,
             system=system,
             tools=TOOLS,
             messages=messages,
@@ -132,8 +132,8 @@ def _run_simple(system: str, user_msg: str) -> str:
     """Run Claude without tools. Appends truncation marker if output was cut off."""
     response = _create_with_retry(
         _get_anthropic(),
-        model="claude-sonnet-4-6",
-        max_tokens=64000,
+        model="claude-haiku-4-5-20251001",
+        max_tokens=8192,
         system=system,
         messages=[{"role": "user", "content": user_msg}],
     )
@@ -512,7 +512,7 @@ def continue_from_truncation(truncated_html: str) -> str:
 
     response = _create_with_retry(
         _get_anthropic(),
-        model="claude-sonnet-4-6",
+        model="claude-haiku-4-5-20251001",
         max_tokens=600,
         system="""You close truncated HTML documents.
 Output ONLY the closing tags needed to make the document valid HTML.
