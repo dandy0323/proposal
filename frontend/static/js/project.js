@@ -86,6 +86,7 @@ let project = null;
 let subPhaseOutputs = {};   // key -> output object (for planning phase)
 let selectedSubPhase = null; // currently displayed sub-phase key
 let currentOutput = null;    // for non-planning phase panel
+let doneOutputs = {};        // { proposal_outline: {...}, mockup: {...} } when done
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 
@@ -211,10 +212,10 @@ function selectSubPhase(key) {
   const statusText = output ? (STATUS_LABELS[output.status] || output.status) : (isFuture ? '未開始' : '未実行');
   document.getElementById('sub-status-label').textContent = statusText;
 
-  // Run button: show only if this is the current active sub-phase
+  // Run button: show only if this is the current active sub-phase (and project not done)
   const runArea = document.getElementById('sub-run-area');
   const btnRun = document.getElementById('btn-sub-run');
-  if (isCurrentActive) {
+  if (isCurrentActive && project.current_phase !== 'done') {
     runArea.classList.remove('hidden');
     if (output && output.status === 'edit_requested') {
       btnRun.textContent = '修正を再実行';
@@ -250,9 +251,9 @@ function selectSubPhase(key) {
     }
   }
 
-  // Review panel: show only for pending output on current active sub-phase
+  // Review panel: show only for pending output on current active sub-phase (and project not done)
   const reviewPanel = document.getElementById('sub-review-panel');
-  if (output && output.status === 'pending' && isCurrentActive) {
+  if (output && output.status === 'pending' && isCurrentActive && project.current_phase !== 'done') {
     reviewPanel.classList.remove('hidden');
   } else {
     reviewPanel.classList.add('hidden');
@@ -261,9 +262,9 @@ function selectSubPhase(key) {
   document.getElementById('sub-edit-form').classList.add('hidden');
   document.getElementById('sub-truncation-banner').classList.add('hidden');
 
-  // Deep-dive panel: why_market only, when pending, on current active sub-phase
+  // Deep-dive panel: why_market only, when pending, on current active sub-phase (and not done)
   const deepDivePanel = document.getElementById('deep-dive-panel');
-  if (key === 'why_market' && output && output.status === 'pending' && isCurrentActive) {
+  if (key === 'why_market' && output && output.status === 'pending' && isCurrentActive && project.current_phase !== 'done') {
     deepDivePanel.classList.remove('hidden');
   } else {
     deepDivePanel.classList.add('hidden');
@@ -389,12 +390,57 @@ function setDeepDiveRunning(flag) {
 
 // ── Regular phase panel (factcheck / proposal_outline / mockup) ────────────────
 
+async function renderDonePanel() {
+  // Show tabs, sub-phase panel (read-only); hide regular phase panel
+  document.getElementById('done-tabs').classList.remove('hidden');
+  document.getElementById('sub-phase-panel').classList.remove('hidden');
+  document.getElementById('phase-panel').classList.add('hidden');
+  document.getElementById('done-output-panel').classList.add('hidden');
+
+  // Load all sub-phase outputs
+  const res = await fetch(`/api/projects/${projectId}/sub-phases`);
+  subPhaseOutputs = await res.json();
+
+  // Pre-load proposal_outline and mockup outputs
+  const [outlineRes, mockupRes] = await Promise.all([
+    fetch(`/api/projects/${projectId}/outputs/proposal_outline`),
+    fetch(`/api/projects/${projectId}/outputs/mockup`),
+  ]);
+  doneOutputs.proposal_outline = await outlineRes.json();
+  doneOutputs.mockup = await mockupRes.json();
+
+  renderSubSidebar();
+  selectSubPhase(SUB_PHASES[0]);
+  switchDoneTab('planning');
+}
+
+function switchDoneTab(tab) {
+  // Update tab button styles
+  document.querySelectorAll('[data-done-tab]').forEach(btn => {
+    const active = btn.dataset.doneTab === tab;
+    btn.className = `px-4 py-2 rounded-lg text-sm font-medium transition ${
+      active ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+    }`;
+  });
+
+  if (tab === 'planning') {
+    document.getElementById('sub-phase-panel').classList.remove('hidden');
+    document.getElementById('done-output-panel').classList.add('hidden');
+  } else {
+    document.getElementById('sub-phase-panel').classList.add('hidden');
+    document.getElementById('done-output-panel').classList.remove('hidden');
+    document.getElementById('done-output-label').textContent = PHASE_LABELS[tab] + ' 出力結果';
+    const output = doneOutputs[tab];
+    if (output && output.output_html) {
+      loadIframe(document.getElementById('done-output-iframe'), output.output_html, 600);
+    }
+  }
+}
+
 async function renderPhasePanel() {
   const phase = project.current_phase;
   if (phase === 'done') {
-    document.getElementById('run-area').innerHTML =
-      '<div class="text-green-600 font-semibold text-sm">🎉 すべてのフェーズが完了しました</div>';
-    document.getElementById('output-area').classList.add('hidden');
+    await renderDonePanel();
     return;
   }
 
