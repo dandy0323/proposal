@@ -2,8 +2,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from backend.database import init_db
 from backend.routers.projects import router as projects_router
 
@@ -16,14 +15,23 @@ init_db()
 app.include_router(projects_router)
 
 FRONTEND_DIR = Path(__file__).parent / "frontend"
-app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")
+
+_NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+
+
+@app.get("/static/{filepath:path}")
+def serve_static(filepath: str):
+    path = FRONTEND_DIR / "static" / filepath
+    if not path.exists():
+        return Response(status_code=404)
+    return FileResponse(path, headers=_NO_CACHE)
 
 
 @app.get("/")
 def index():
-    return FileResponse(FRONTEND_DIR / "templates" / "index.html")
+    return FileResponse(FRONTEND_DIR / "templates" / "index.html", headers=_NO_CACHE)
 
 
 @app.get("/project/{project_id}")
 def project_page(project_id: int):
-    return FileResponse(FRONTEND_DIR / "templates" / "project.html")
+    return FileResponse(FRONTEND_DIR / "templates" / "project.html", headers=_NO_CACHE)
