@@ -87,6 +87,7 @@ let subPhaseOutputs = {};   // key -> output object (for planning phase)
 let selectedSubPhase = null; // currently displayed sub-phase key
 let currentOutput = null;    // for non-planning phase panel
 let doneOutputs = {};        // { proposal_outline: {...}, mockup: {...} } when done
+let selectedDoneTab = 'planning'; // active tab when done
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 
@@ -106,17 +107,31 @@ async function init() {
 
 function renderStepper() {
   const el = document.getElementById('stepper');
+  const isDone = project.current_phase === 'done';
   el.innerHTML = PHASES.map((p, i) => {
     const active = p === project.current_phase;
     const done = PHASES.indexOf(project.current_phase) > i;
-    const cls = done
-      ? 'bg-green-500 text-white'
-      : active
-      ? 'bg-blue-600 text-white ring-2 ring-blue-300'
-      : 'bg-gray-200 text-gray-500';
+    const isReviewable = isDone && p !== 'done';
+    const isSelectedTab = isDone && p === selectedDoneTab;
+
+    let cls, onclick = '';
+    if (isReviewable) {
+      cls = isSelectedTab
+        ? 'bg-blue-600 text-white ring-2 ring-blue-300 cursor-pointer'
+        : 'bg-green-500 text-white cursor-pointer hover:bg-green-400 transition';
+      onclick = `onclick="switchDoneTab('${p}')"`;
+    } else if (done) {
+      cls = 'bg-green-500 text-white';
+    } else if (active) {
+      cls = 'bg-blue-600 text-white ring-2 ring-blue-300';
+    } else {
+      cls = 'bg-gray-200 text-gray-500';
+    }
+
+    const label = (done || isReviewable) ? '✓ ' + PHASE_LABELS[p] : PHASE_LABELS[p];
     const sep = i < PHASES.length - 1 ? '<div class="w-6 h-px bg-gray-300 flex-shrink-0"></div>' : '';
     return `<div class="flex items-center gap-2 flex-shrink-0">
-      <div class="px-3 py-1.5 rounded-full text-xs font-semibold ${cls}">${done ? '✓ ' : ''}${PHASE_LABELS[p]}</div>
+      <div class="px-3 py-1.5 rounded-full text-xs font-semibold ${cls}" ${onclick}>${label}</div>
       ${sep}
     </div>`;
   }).join('');
@@ -391,8 +406,7 @@ function setDeepDiveRunning(flag) {
 // ── Regular phase panel (factcheck / proposal_outline / mockup) ────────────────
 
 async function renderDonePanel() {
-  // Show tabs, sub-phase panel (read-only); hide regular phase panel
-  document.getElementById('done-tabs').classList.remove('hidden');
+  selectedDoneTab = 'planning';
   document.getElementById('sub-phase-panel').classList.remove('hidden');
   document.getElementById('phase-panel').classList.add('hidden');
   document.getElementById('done-output-panel').classList.add('hidden');
@@ -415,13 +429,8 @@ async function renderDonePanel() {
 }
 
 function switchDoneTab(tab) {
-  // Update tab button styles
-  document.querySelectorAll('[data-done-tab]').forEach(btn => {
-    const active = btn.dataset.doneTab === tab;
-    btn.className = `px-4 py-2 rounded-lg text-sm font-medium transition ${
-      active ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-    }`;
-  });
+  selectedDoneTab = tab;
+  renderStepper();
 
   if (tab === 'planning') {
     document.getElementById('sub-phase-panel').classList.remove('hidden');
