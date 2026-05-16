@@ -6,8 +6,6 @@ function loadIframe(iframe, html, minHeight) {
   iframe.onload = () => {
     try {
       const doc = iframe.contentDocument || iframe.contentWindow.document;
-      // getBoundingClientRect().bottom gives actual rendered position,
-      // unaffected by min-height/height:100% on body or html elements.
       let maxBottom = minHeight;
       const els = doc.body.getElementsByTagName('*');
       for (let i = 0; i < els.length; i++) {
@@ -20,6 +18,11 @@ function loadIframe(iframe, html, minHeight) {
     } catch (_) {
       iframe.style.height = minHeight + 'px';
     }
+    // Force Chart.js re-render after iframe resize
+    try {
+      const win = iframe.contentWindow;
+      if (win.Chart) Object.values(win.Chart.instances).forEach(c => { try { c.resize(); } catch(_) {} });
+    } catch(_) {}
   };
   iframe.src = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
 }
@@ -314,16 +317,18 @@ async function selectSubPhase(key) {
     }
   }
 
-  // Review panel: show only for pending output on current active sub-phase (and project not done)
+  // Review panel: show only for pending non-truncated output on current active sub-phase (and project not done)
   const reviewPanel = document.getElementById('sub-review-panel');
-  if (output && output.status === 'pending' && isCurrentActive && project.current_phase !== 'done') {
+  if (output && output.status === 'pending' && isCurrentActive && project.current_phase !== 'done' && !output.is_truncated) {
     reviewPanel.classList.remove('hidden');
   } else {
     reviewPanel.classList.add('hidden');
   }
   document.getElementById('sub-reject-form').classList.add('hidden');
   document.getElementById('sub-edit-form').classList.add('hidden');
-  document.getElementById('sub-truncation-banner').classList.add('hidden');
+  // Restore truncation banner on reload if output was truncated and still pending
+  const isTruncated = output && output.is_truncated && output.status === 'pending' && isCurrentActive && project.current_phase !== 'done';
+  document.getElementById('sub-truncation-banner').classList.toggle('hidden', !isTruncated);
 
   // Deep-dive panel: why_market only, when pending, on current active sub-phase (and not done)
   const deepDivePanel = document.getElementById('deep-dive-panel');
@@ -595,6 +600,9 @@ document.getElementById('btn-version-older').addEventListener('click', () => nav
 document.getElementById('btn-version-newer').addEventListener('click', () => navigateSubVersion(-1));
 
 document.getElementById('btn-truncation-proceed').addEventListener('click', () => {
+  // Clear truncation flag in memory so re-selecting this sub-phase shows review panel
+  if (subPhaseOutputs[selectedSubPhase]) subPhaseOutputs[selectedSubPhase].is_truncated = 0;
+  if (subPhaseHistories[selectedSubPhase]?.[0]) subPhaseHistories[selectedSubPhase][0].is_truncated = 0;
   document.getElementById('sub-truncation-banner').classList.add('hidden');
   document.getElementById('sub-review-panel').classList.remove('hidden');
 });

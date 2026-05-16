@@ -10,7 +10,7 @@ from backend.constants import SUB_PHASE_LABELS
 CHART_INSTRUCTIONS = """
 ## チャート描画の必須ルール
 - Chart.js CDN: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-- 全チャートは必ず window.addEventListener('DOMContentLoaded', function() { ... }); の中で初期化する
+- 全チャートは必ず window.onload = function() { ... }; の中で初期化する（DOMContentLoadedは使用しない）
 - データは必ず実際の数値または調査に基づく推定値を設定する（空配列・0埋めは禁止）
 - canvas要素のidを正確に参照してからnew Chart()を呼ぶ
 - グラフごとに固有のidをcanvasに付与する
@@ -23,6 +23,12 @@ HTML_RULES = """
 - 日本語で記述
 - HTMLのみを出力し、前後の説明文・コードフェンス(```)は不要
 - 推定値は「※推定」と明記する
+
+## 出典の記載ルール
+- 具体的な数値・統計・事実を記載する際は、その直後に出典URLをインラインでリンク表示する
+  形式: <a href="URL" target="_blank" class="text-xs text-blue-500 underline ml-1">出典</a>
+- Web検索結果に含まれるURLを優先して使用する
+- 推定・仮説の場合は「（※推定）」と付記する
 """
 
 TOOLS = [

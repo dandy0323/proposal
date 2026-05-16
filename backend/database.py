@@ -72,6 +72,13 @@ def init_db():
     conn.execute("UPDATE projects SET sort_order = id WHERE sort_order = 0")
     conn.commit()
 
+    # Migration: add is_truncated column to sub_phase_outputs
+    try:
+        conn.execute("ALTER TABLE sub_phase_outputs ADD COLUMN is_truncated INTEGER DEFAULT 0")
+        conn.commit()
+    except Exception:
+        pass
+
     # Migration: projects stuck at removed 'factcheck' phase → advance to proposal_outline
     conn.execute(
         "UPDATE projects SET current_phase = 'proposal_outline', updated_at = datetime('now') WHERE current_phase = 'factcheck'"
@@ -250,7 +257,7 @@ def edit_phase_output(output_id: int, instruction: str):
 
 # ── Sub-phase outputs (planning phase) ───────────────────────────────────────
 
-def save_sub_phase_output(project_id: int, key: str, html: str) -> int:
+def save_sub_phase_output(project_id: int, key: str, html: str, is_truncated: bool = False) -> int:
     conn = get_conn()
     now = datetime.now().isoformat()
     conn.execute(
@@ -258,8 +265,8 @@ def save_sub_phase_output(project_id: int, key: str, html: str) -> int:
         (project_id, key),
     )
     cur = conn.execute(
-        "INSERT INTO sub_phase_outputs (project_id, sub_phase_key, output_html, status, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?)",
-        (project_id, key, html, now, now),
+        "INSERT INTO sub_phase_outputs (project_id, sub_phase_key, output_html, status, is_truncated, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?, ?)",
+        (project_id, key, html, 1 if is_truncated else 0, now, now),
     )
     output_id = cur.lastrowid
     conn.commit()

@@ -157,7 +157,7 @@ async def run_sub_phase(req: RunSubPhaseRequest):
         except Exception as e:
             print(f"Auto-factcheck failed for {key}: {e}")
 
-    output_id = db.save_sub_phase_output(req.project_id, key, html)
+    output_id = db.save_sub_phase_output(req.project_id, key, html, is_truncated=truncated)
     return {"output_id": output_id, "html": html, "truncated": truncated}
 
 
