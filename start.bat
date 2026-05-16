@@ -50,5 +50,20 @@ echo.
 REM 自動pull（30秒ごとにバックグラウンドで実行）
 start "Auto Pull" /min watch_pull.bat
 
+REM ngrokが存在する場合はスマホ用トンネルを自動起動
+where ngrok >nul 2>&1
+if %errorlevel% == 0 (
+    echo [ngrok] スマホ用トンネルを起動中...
+    start "ngrok" /min ngrok http 8000
+    timeout /t 3 /nobreak > nul
+    echo [ngrok] 起動しました。別ウィンドウのngrok画面に表示されるURLをスマホで開いてください。
+    echo         例: https://xxxx-xxx-xxx-xxx-xxx.ngrok-free.app
+    echo.
+) else (
+    echo [ngrok] ヒント: ngrokをインストールするとスマホからもアクセスできます。
+    echo         詳細は README_SMARTPHONE.md を参照してください。
+    echo.
+)
+
 python -m uvicorn main:app --reload --port 8000
 pause
