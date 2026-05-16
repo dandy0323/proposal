@@ -88,6 +88,8 @@ let selectedSubPhase = null; // currently displayed sub-phase key
 let currentOutput = null;    // for non-planning phase panel
 let doneOutputs = {};        // { proposal_outline: {...}, mockup: {...} } when done
 let selectedDoneTab = 'planning'; // active tab when done
+let subPhaseHistories = {};  // cache: key → array of versions (newest first)
+let viewingVersionIdx = 0;   // 0 = newest version
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 
@@ -214,8 +216,54 @@ function renderSubSidebar() {
   }).join('');
 }
 
-function selectSubPhase(key) {
+async function fetchSubPhaseHistory(key) {
+  if (!subPhaseHistories[key]) {
+    const res = await fetch(`/api/projects/${projectId}/sub-phases/${key}/history`);
+    subPhaseHistories[key] = await res.json();
+  }
+  return subPhaseHistories[key];
+}
+
+function renderVersionNav(history, idx) {
+  const nav = document.getElementById('sub-version-nav');
+  if (!history || history.length <= 1) {
+    nav.classList.add('hidden');
+    return;
+  }
+  nav.classList.remove('hidden');
+  document.getElementById('sub-version-label').textContent = `v${history.length - idx}/${history.length}`;
+  document.getElementById('btn-version-older').disabled = idx >= history.length - 1;
+  document.getElementById('btn-version-newer').disabled = idx <= 0;
+}
+
+function navigateSubVersion(delta) {
+  const history = subPhaseHistories[selectedSubPhase];
+  if (!history || history.length <= 1) return;
+  viewingVersionIdx = Math.max(0, Math.min(history.length - 1, viewingVersionIdx + delta));
+  const output = history[viewingVersionIdx];
+  renderVersionNav(history, viewingVersionIdx);
+  document.getElementById('sub-status-label').textContent = STATUS_LABELS[output.status] || output.status;
+  if (output.output_html) {
+    document.getElementById('sub-iframe').classList.remove('hidden');
+    document.getElementById('sub-empty-state').classList.add('hidden');
+    loadIframe(document.getElementById('sub-iframe'), output.output_html, 500);
+  }
+  const isNewest = viewingVersionIdx === 0;
+  const isCurrentActive = selectedSubPhase === project.current_sub_phase;
+  const showReview = isNewest && output.status === 'pending' && isCurrentActive && project.current_phase !== 'done';
+  document.getElementById('sub-review-panel').classList.toggle('hidden', !showReview);
+  const showDeep = isNewest && selectedSubPhase === 'why_market' && output.status === 'pending' && isCurrentActive && project.current_phase !== 'done';
+  document.getElementById('deep-dive-panel').classList.toggle('hidden', !showDeep);
+  document.getElementById('sub-reject-form').classList.add('hidden');
+  document.getElementById('sub-edit-form').classList.add('hidden');
+  document.getElementById('sub-truncation-banner').classList.add('hidden');
+}
+
+async function selectSubPhase(key) {
   selectedSubPhase = key;
+  viewingVersionIdx = 0;
+  const history = await fetchSubPhaseHistory(key);
+  if (history.length > 0) subPhaseOutputs[key] = history[0];
   const output = subPhaseOutputs[key] || null;
   const currentIdx = SUB_PHASES.indexOf(project.current_sub_phase);
   const keyIdx = SUB_PHASES.indexOf(key);
@@ -285,6 +333,7 @@ function selectSubPhase(key) {
     deepDivePanel.classList.add('hidden');
   }
 
+  renderVersionNav(history, 0);
   renderSubSidebar();
 }
 
@@ -308,6 +357,7 @@ async function runSubPhase(key, continueMode = false) {
     }
     const data = await res.json();
     subPhaseOutputs[key] = { id: data.output_id, output_html: data.html, status: 'pending', sub_phase_key: key };
+    delete subPhaseHistories[key];  // invalidate cache
     document.getElementById('sub-run-status').textContent = '完了';
     selectSubPhase(key);
     if (data.truncated) {
@@ -389,6 +439,7 @@ async function runDeepDive() {
     }
     const data = await res.json();
     subPhaseOutputs['why_market'] = { id: data.output_id, output_html: data.html, status: 'pending', sub_phase_key: 'why_market' };
+    delete subPhaseHistories['why_market'];  // invalidate cache
     document.getElementById('deep-dive-input').value = '';
     selectSubPhase('why_market');
   } catch (e) {
@@ -540,6 +591,8 @@ async function submitReview(action, comment = '', editInstruction = '') {
 
 // Sub-phase controls
 document.getElementById('btn-sub-run').addEventListener('click', () => runSubPhase(selectedSubPhase));
+document.getElementById('btn-version-older').addEventListener('click', () => navigateSubVersion(1));
+document.getElementById('btn-version-newer').addEventListener('click', () => navigateSubVersion(-1));
 
 document.getElementById('btn-truncation-proceed').addEventListener('click', () => {
   document.getElementById('sub-truncation-banner').classList.add('hidden');

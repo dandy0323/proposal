@@ -106,6 +106,11 @@ def get_sub_phases(project_id: int):
     return db.get_all_sub_phase_outputs(project_id)
 
 
+@router.get("/{project_id}/sub-phases/{key}/history")
+def get_sub_phase_history(project_id: int, key: str):
+    return db.get_sub_phase_output_history(project_id, key)
+
+
 # ── Sub-phase endpoints ────────────────────────────────────────────────────────
 
 @router.post("/run-sub-phase")

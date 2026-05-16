@@ -348,3 +348,14 @@ def edit_sub_phase_output(output_id: int, instruction: str):
     )
     conn.commit()
     conn.close()
+
+
+def get_sub_phase_output_history(project_id: int, key: str) -> List[dict]:
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, status, created_at, output_html, edit_instruction, review_comment "
+        "FROM sub_phase_outputs WHERE project_id = ? AND sub_phase_key = ? ORDER BY created_at DESC",
+        (project_id, key),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

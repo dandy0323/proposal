@@ -35,7 +35,14 @@
         <!-- Sub-phase header -->
         <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-white flex-shrink-0">
           <span id="sub-phase-title" class="text-sm font-semibold text-gray-700"></span>
-          <span id="sub-status-label" class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500"></span>
+          <div class="flex items-center gap-3">
+            <div id="sub-version-nav" class="hidden flex items-center gap-1 text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
+              <button id="btn-version-older" title="古い版を見る" class="hover:text-gray-600 disabled:opacity-30 px-0.5 transition">←</button>
+              <span id="sub-version-label" class="min-w-[3rem] text-center font-mono"></span>
+              <button id="btn-version-newer" title="新しい版を見る" class="hover:text-gray-600 disabled:opacity-30 px-0.5 transition">→</button>
+            </div>
+            <span id="sub-status-label" class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500"></span>
+          </div>
         </div>
 
         <!-- Run area -->
@@ -215,6 +222,6 @@
 
 </main>
 
-<script src="/static/js/project.js?v=20260503"></script>
+<script src="/static/js/project.js?v=20260516"></script>
 </body>
 </html>
