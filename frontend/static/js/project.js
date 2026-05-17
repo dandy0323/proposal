@@ -1,5 +1,17 @@
 // ── Utilities ──────────────────────────────────────────────────────────────────
 
+function requestNotificationPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+function notifyComplete(title, body = 'AI Design Automation') {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const n = new Notification(title, { body, icon: '/static/favicon.svg' });
+  setTimeout(() => n.close(), 6000);
+}
+
 function loadIframe(iframe, html, minHeight) {
   // Start large so all content (including min-h-screen) renders before measuring.
   iframe.style.height = '20000px';
@@ -97,6 +109,7 @@ let viewingVersionIdx = 0;   // 0 = newest version
 // ── Init ───────────────────────────────────────────────────────────────────────
 
 async function init() {
+  requestNotificationPermission();
   project = await (await fetch(`/api/projects/${projectId}`)).json();
   document.getElementById('project-name').textContent = project.name;
   renderStepper();
@@ -364,6 +377,7 @@ async function runSubPhase(key, continueMode = false) {
     subPhaseOutputs[key] = { id: data.output_id, output_html: data.html, status: 'pending', sub_phase_key: key };
     delete subPhaseHistories[key];  // invalidate cache
     document.getElementById('sub-run-status').textContent = '完了';
+    notifyComplete(`✓ ${SUB_PHASE_LABELS[key] || key} 完了`);
     selectSubPhase(key);
     if (data.truncated) {
       document.getElementById('sub-truncation-banner').classList.remove('hidden');
@@ -446,6 +460,7 @@ async function runDeepDive() {
     subPhaseOutputs['why_market'] = { id: data.output_id, output_html: data.html, status: 'pending', sub_phase_key: 'why_market' };
     delete subPhaseHistories['why_market'];  // invalidate cache
     document.getElementById('deep-dive-input').value = '';
+    notifyComplete('✓ 追加調査 完了', '市場・競合分析');
     selectSubPhase('why_market');
   } catch (e) {
     alert('通信エラー: ' + e.message);
@@ -556,6 +571,7 @@ async function runAgent(phase) {
     currentOutput = { id: data.output_id, output_html: data.html, status: 'pending' };
     showOutput(currentOutput, phase);
     document.getElementById('run-status').textContent = '完了';
+    notifyComplete(`✓ ${PHASE_LABELS[phase] || phase} 完了`);
   } catch (e) {
     alert('通信エラー: ' + e.message);
   } finally {
