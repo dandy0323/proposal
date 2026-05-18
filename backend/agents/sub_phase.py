@@ -149,13 +149,28 @@ def _run_simple(system: str, user_msg: str) -> str:
             messages=messages,
         )
         chunk = response.content[0].text
-        accumulated += ("\n" if accumulated else "") + _strip(chunk)
+        if attempt == 0:
+            accumulated = _strip(chunk)
+        else:
+            accumulated += _strip_continuation(chunk)
 
         if response.stop_reason != "max_tokens":
             break
 
         messages.append({"role": "assistant", "content": chunk})
-        messages.append({"role": "user", "content": "HTMLが途中で切れました。切れた箇所の直後から続きを省略なしで出力してください。新しいHTMLドキュメントを開始せず、前の部分の繰り返しも不要です。続きのHTMLのみ、</html>まで出力してください。"})
+        tail = accumulated[-800:]
+        messages.append({
+            "role": "user",
+            "content": (
+                "HTMLが途中で切れました。以下の直前の出力末尾を参考に、続きのHTMLを出力してください。\n\n"
+                f"【直前の出力末尾】\n{tail}\n\n"
+                "【出力ルール】\n"
+                "- <!DOCTYPE>, <html>, <head>, <body> などドキュメント開始タグは出力しない\n"
+                "- コードフェンス（```）は出力しない\n"
+                "- 説明文・コメントは出力しない\n"
+                "- 切れた箇所から続きのHTMLのみを出力し、</html> で終了する"
+            )
+        })
     else:
         accumulated += "\n<!-- __TRUNCATED__ -->"
 
@@ -170,6 +185,17 @@ def _strip(text: str) -> str:
         text = text[3:]
     if text.endswith("```"):
         text = text[:-3]
+    return text.strip()
+
+
+def _strip_continuation(text: str) -> str:
+    """Remove code fences and any restarted HTML document structure from a continuation chunk."""
+    text = _strip(text)
+    # If AI restarted a full HTML document, strip the boilerplate structural tags
+    text = re.sub(r'(?i)^\s*<!DOCTYPE[^>]*>\s*', '', text)
+    text = re.sub(r'(?i)^\s*<html[^>]*>\s*', '', text)
+    text = re.sub(r'(?i)^\s*<head\b.*?</head>\s*', '', text, flags=re.DOTALL)
+    text = re.sub(r'(?i)^\s*<body[^>]*>\s*', '', text)
     return text.strip()
 
 
