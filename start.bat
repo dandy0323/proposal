@@ -25,6 +25,15 @@ if %errorlevel% == 0 (
     exit /b
 )
 
+REM ログインパスワードが未設定の場合は警告
+findstr /c:"your_password_here" .env > nul
+if %errorlevel% == 0 (
+    echo [!] .env の APP_PASSWORD が未設定です。ログイン用パスワードを設定してください。
+    start notepad .env
+    pause
+    exit /b
+)
+
 REM 最新コードを自動取得
 echo [0/2] 最新コードを取得中...
 git pull origin claude/ai-design-automation-app-xju0x

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ログイン - AI Proposal Automation</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center">
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-8 w-full max-w-sm mx-4">
+    <div class="flex justify-center mb-5">
+      <img src="/static/favicon.svg" class="w-12 h-12" alt="logo" />
+    </div>
+    <h1 class="text-lg font-bold text-gray-800 text-center mb-1">AI Proposal Automation</h1>
+    <p class="text-sm text-gray-500 text-center mb-6">パスワードを入力してください</p>
+
+    <div id="error-msg" class="hidden mb-4 text-sm text-red-600 text-center bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+      パスワードが正しくありません
+    </div>
+
+    <form method="POST" action="/login" class="space-y-3">
+      <input type="password" name="password" required autofocus
+        class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+        placeholder="パスワード" />
+      <button type="submit"
+        class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg text-sm font-semibold transition">
+        ログイン
+      </button>
+    </form>
+  </div>
+
+  <script>
+    if (location.search.includes('error=1')) {
+      document.getElementById('error-msg').classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>
