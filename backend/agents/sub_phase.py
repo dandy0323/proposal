@@ -23,6 +23,7 @@ HTML_RULES = """
 - 日本語で記述
 - HTMLのみを出力し、前後の説明文・コードフェンス(```)は不要
 - 推定値は「※推定」と明記する
+- ⚠補足・事実確認注記・ファクトチェックコメント・「確認できない」などの注釈は一切出力しない
 
 ## 出典の記載ルール
 - 具体的な数値・統計・事実を記載する際は、その直後に出典URLをインラインでリンク表示する
@@ -134,8 +135,8 @@ def _run_with_tools(system: str, user_msg: str) -> str:
     return ""
 
 
-def _run_simple(system: str, user_msg: str) -> str:
-    """Run Claude without tools. Auto-continues up to 2 times if output is truncated."""
+def _run_simple(system: str, user_msg: str, model: str = "claude-haiku-4-5-20251001") -> str:
+    """Run Claude without tools. Auto-continues up to 2 times if output is truncated or prematurely closed."""
     client = _get_anthropic()
     messages = [{"role": "user", "content": user_msg}]
     accumulated = ""
@@ -143,7 +144,7 @@ def _run_simple(system: str, user_msg: str) -> str:
     for attempt in range(3):
         response = _create_with_retry(
             client,
-            model="claude-haiku-4-5-20251001",
+            model=model,
             max_tokens=8192,
             system=system,
             messages=messages,
@@ -154,23 +155,27 @@ def _run_simple(system: str, user_msg: str) -> str:
         else:
             accumulated += _strip_continuation(chunk)
 
-        if response.stop_reason != "max_tokens":
+        # Complete only when stop_reason is end_turn AND </html> is present
+        html_closed = bool(re.search(r'</html\s*>', accumulated, re.IGNORECASE))
+        if response.stop_reason != "max_tokens" and html_closed:
             break
 
-        messages.append({"role": "assistant", "content": chunk})
-        tail = accumulated[-800:]
-        messages.append({
-            "role": "user",
-            "content": (
-                "HTMLが途中で切れました。以下の直前の出力末尾を参考に、続きのHTMLを出力してください。\n\n"
-                f"【直前の出力末尾】\n{tail}\n\n"
-                "【出力ルール】\n"
-                "- <!DOCTYPE>, <html>, <head>, <body> などドキュメント開始タグは出力しない\n"
-                "- コードフェンス（```）は出力しない\n"
-                "- 説明文・コメントは出力しない\n"
-                "- 切れた箇所から続きのHTMLのみを出力し、</html> で終了する"
-            )
-        })
+        # Need continuation: either max_tokens hit, or end_turn without </html> (premature close)
+        if attempt < 2:
+            messages.append({"role": "assistant", "content": chunk})
+            tail = accumulated[-800:]
+            messages.append({
+                "role": "user",
+                "content": (
+                    "HTMLが途中で切れました。以下の直前の出力末尾を参考に、続きのHTMLを出力してください。\n\n"
+                    f"【直前の出力末尾】\n{tail}\n\n"
+                    "【出力ルール】\n"
+                    "- <!DOCTYPE>, <html>, <head>, <body> などドキュメント開始タグは出力しない\n"
+                    "- コードフェンス（```）は出力しない\n"
+                    "- 説明文・コメントは出力しない\n"
+                    "- 切れた箇所から続きのHTMLのみを出力し、</html> で終了する"
+                )
+            })
     else:
         accumulated += "\n<!-- __TRUNCATED__ -->"
 
@@ -254,17 +259,22 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
     competitors = form_data.get("competitors", "")
 
     system = f"""あなたは市場調査・競合分析の専門家です。
-提供されたWeb調査結果をもとに、詳細な市場・競合分析レポートHTMLを作成してください。
+提供されたWeb調査結果をもとに、市場・競合分析レポートHTMLを作成してください。
 
-## 含める内容
-1. **市場規模と成長性**: 調査結果の数値を引用して明記する
-2. **競合サービス分析**: 機能比較表・強弱・料金体系
-3. **市場トレンド・技術動向**
+## 含める内容（各セクション最大5項目まで、超過禁止）
+1. **市場規模と成長性**: barチャート＋重要ポイント3〜5件
+2. **競合サービス分析**: 最大5社の比較表（機能・料金・強み・弱みの4列）
+3. **市場トレンド**: 3〜5件のトレンドを箇条書き
 
-## チャート仕様
-- 市場規模推移: 実際の数値を使ったbarまたはlineチャート
-- 競合比較レーダーチャート: 機能充実度・価格競争力・UX・ブランド力を5段階評価
+## チャート仕様（1種類のみ）
+- 市場規模推移: barチャート（4〜5年分の実際の数値）
 {CHART_INSTRUCTIONS}
+
+## 完了要件（最重要）
+- 必ずセクション1・2・3の全セクションを含めること
+- 全セクション記載後に </body></html> で閉じること
+- トークンが不足しそうな場合は各項目を簡潔にして全セクション完成を優先する
+
 {HTML_RULES}"""
 
     if deep_dive_request and previous_output:
@@ -307,7 +317,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 
 上記の調査結果をもとに、市場・競合分析レポートHTMLを作成してください。"""
 
-    return _run_simple(system, user)
+    return _run_simple(system, user, model="claude-sonnet-4-6")
 
 
 def _why_business_model(form_data, approved, previous_output, edit_instruction):
@@ -464,7 +474,7 @@ def _how_feasibility(form_data, approved, previous_output, edit_instruction):
 
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}\n\n## Web調査結果\n{search_section}{_edit_block(previous_output, edit_instruction)}\n\n技術実現可能性レポートHTMLを作成してください。"
-    return _run_simple(system, user)
+    return _run_simple(system, user, model="claude-sonnet-4-6")
 
 
 def _how_integration(form_data, approved, previous_output, edit_instruction):
