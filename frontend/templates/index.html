@@ -76,22 +76,22 @@
         <!-- Background -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">背景・目的 <span class="text-red-500">*</span></label>
-          <textarea name="background" required rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="このシステムを開発する背景・達成したい目的を記載してください"></textarea>
+          <textarea name="background" required rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-y" placeholder="このシステムを開発する背景・達成したい目的を記載してください"></textarea>
         </div>
 
         <!-- Target Users -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">ターゲットユーザ（サービス利用者） <span class="text-red-500">*</span></label>
-          <textarea name="target_users" required rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="例: 20〜40代の健康意識が高い会社員、スマートフォンを日常的に使用"></textarea>
+          <textarea name="target_users" required rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-y" placeholder="例: 20〜40代の健康意識が高い会社員、スマートフォンを日常的に使用"></textarea>
         </div>
 
         <!-- Competitors -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">競合情報 <span class="text-gray-400 text-xs">任意</span></label>
-          <textarea name="competitors" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="例: ○○アプリ（月額500円・MAU100万）、△△サービス（無料・広告収益モデル）"></textarea>
+          <textarea name="competitors" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-y" placeholder="例: ○○アプリ（月額500円・MAU100万）、△△サービス（無料・広告収益モデル）"></textarea>
         </div>
 
-        <!-- Row Budget + Roadmap -->
+        <!-- Budget -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">予算規模 <span class="text-red-500">*</span></label>
@@ -103,28 +103,30 @@
               <option value="未定">未定</option>
             </select>
           </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">ロードマップ <span class="text-red-500">*</span></label>
-            <input name="roadmap" type="text" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例: 2025年Q3 MVP、2026年Q1 正式リリース">
-          </div>
+        </div>
+
+        <!-- Roadmap -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">ロードマップ <span class="text-red-500">*</span></label>
+          <textarea name="roadmap" required rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-y" placeholder="例: 2025年Q3 MVP リリース&#10;2026年Q1 正式リリース&#10;2026年Q3 機能拡張フェーズ2"></textarea>
         </div>
 
         <!-- System Components -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">システム構成要素 <span class="text-gray-400 text-xs">任意</span></label>
-          <textarea name="system_components" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="例: 既存の会員DBとAPI連携、Stripe決済API、Google Maps API"></textarea>
+          <textarea name="system_components" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-y" placeholder="例: 既存の会員DBとAPI連携、Stripe決済API、Google Maps API"></textarea>
         </div>
 
         <!-- Overview -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">プロジェクト概要・課題感 <span class="text-red-500">*</span></label>
-          <textarea name="overview" required rows="4" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="現状の課題、実現したいこと、開発の背景などを詳しく記載してください"></textarea>
+          <textarea name="overview" required rows="4" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-y" placeholder="現状の課題、実現したいこと、開発の背景などを詳しく記載してください"></textarea>
         </div>
 
         <!-- Notes -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">特記事項・制約 <span class="text-gray-400 text-xs">任意</span></label>
-          <textarea name="notes" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="法的制約、既存システムとの制約、技術スタックの指定など"></textarea>
+          <textarea name="notes" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-y" placeholder="法的制約、既存システムとの制約、技術スタックの指定など"></textarea>
         </div>
 
         <div class="flex justify-end gap-3 pt-2">
