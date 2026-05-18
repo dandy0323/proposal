@@ -135,18 +135,31 @@ def _run_with_tools(system: str, user_msg: str) -> str:
 
 
 def _run_simple(system: str, user_msg: str) -> str:
-    """Run Claude without tools. Appends truncation marker if output was cut off."""
-    response = _create_with_retry(
-        _get_anthropic(),
-        model="claude-haiku-4-5-20251001",
-        max_tokens=8192,
-        system=system,
-        messages=[{"role": "user", "content": user_msg}],
-    )
-    html = _strip(response.content[0].text)
-    if response.stop_reason == "max_tokens":
-        html += "\n<!-- __TRUNCATED__ -->"
-    return html
+    """Run Claude without tools. Auto-continues up to 2 times if output is truncated."""
+    client = _get_anthropic()
+    messages = [{"role": "user", "content": user_msg}]
+    accumulated = ""
+
+    for attempt in range(3):
+        response = _create_with_retry(
+            client,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=8192,
+            system=system,
+            messages=messages,
+        )
+        chunk = response.content[0].text
+        accumulated += ("\n" if accumulated else "") + _strip(chunk)
+
+        if response.stop_reason != "max_tokens":
+            break
+
+        messages.append({"role": "assistant", "content": chunk})
+        messages.append({"role": "user", "content": "HTMLが途中で切れました。切れた箇所の直後から続きを省略なしで出力してください。新しいHTMLドキュメントを開始せず、前の部分の繰り返しも不要です。続きのHTMLのみ、</html>まで出力してください。"})
+    else:
+        accumulated += "\n<!-- __TRUNCATED__ -->"
+
+    return accumulated
 
 
 def _strip(text: str) -> str:
