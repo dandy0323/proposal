@@ -29,10 +29,10 @@ def _session_token() -> str:
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path == "/login" or path.startswith("/static/"):
+        if path in ("/login", "/logout") or path.startswith("/static/"):
             return await call_next(request)
         if request.cookies.get("session") != _session_token():
-            return RedirectResponse("/login")
+            return RedirectResponse("/login", status_code=302)
         return await call_next(request)
 
 
@@ -57,7 +57,7 @@ async def login(password: str = Form(...)):
 @app.post("/logout")
 async def logout():
     resp = RedirectResponse("/login", status_code=303)
-    resp.delete_cookie("session")
+    resp.delete_cookie("session", httponly=True, samesite="strict")
     return resp
 
 
