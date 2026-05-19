@@ -17,13 +17,14 @@ CHART_INSTRUCTIONS = """
 """
 
 HTML_RULES = """
-## HTML出力ルール
+## HTML出力ルール（最優先・違反禁止）
+- 出力の最初のトークンは必ず「<!DOCTYPE html>」にすること（説明文・前置き・コードフェンスは絶対不要）
+- HTMLコードのみを出力すること
 - Tailwind CSS CDN使用: <script src="https://cdn.tailwindcss.com"></script>
 - 単一HTMLファイルで完結させる
 - 日本語で記述
-- HTMLのみを出力し、前後の説明文・コードフェンス(```)は不要
 - 推定値は「※推定」と明記する
-- ⚠補足・事実確認注記・ファクトチェックコメント・「確認できない」などの注釈は一切出力しない
+- ⚠補足・事実確認注記・ファクトチェックコメント・「確認できない」「推測です」などの注釈は絶対に出力しない（違反禁止）
 
 ## 出典の記載ルール
 - 具体的な数値・統計・事実を記載する際は、その直後に出典URLをインラインでリンク表示する
@@ -190,27 +191,25 @@ def _run_simple(system: str, user_msg: str, model: str = "claude-haiku-4-5-20251
 
 
 def _strip(text: str) -> str:
+    """Return just the HTML content, stripping any preamble text and code fences."""
     text = text.strip()
-    # Handle preamble text before code fence (e.g. "Explanation... ```html\n<html>...")
-    if '```html' in text:
-        text = text.split('```html', 1)[1]
+    # Find code fence in any format: ```html, ```, or ``` + newline + language line
+    m = re.search(r'```[ \t]*\w*[ \t]*\n', text)
+    if m:
+        text = text[m.end():]
         if text.rstrip().endswith('```'):
             text = text.rstrip()[:-3]
-        return text.strip()
-    if text.startswith('```'):
-        text = text[3:]
-    if text.endswith('```'):
-        text = text[:-3]
+        text = text.strip()
+    # Strip any remaining preamble before <!DOCTYPE or <html (handles no-fence preamble)
+    m2 = re.search(r'(?i)<!DOCTYPE|<html\b', text)
+    if m2 and m2.start() > 0:
+        text = text[m2.start():]
     return text.strip()
 
 
 def _strip_continuation(text: str) -> str:
-    """Extract HTML body content from a continuation chunk, stripping preamble and document boilerplate."""
-    text = _strip(text)  # handles code fences including preamble + ```html
-    # Fallback: if no code fence but there is preamble text before the HTML document, skip it
-    m = re.search(r'(?i)<!DOCTYPE|<html\b', text)
-    if m and m.start() > 0:
-        text = text[m.start():]
+    """Extract HTML body content from a continuation chunk."""
+    text = _strip(text)
     # Strip full document boilerplate if AI restarted an HTML document
     text = re.sub(r'(?i)^\s*<!DOCTYPE[^>]*>\s*', '', text)
     text = re.sub(r'(?i)^\s*<html[^>]*>\s*', '', text)
@@ -265,7 +264,7 @@ def _why_background(form_data, approved, previous_output, edit_instruction):
 - KGI / KPI の仮説設定
 
 {HTML_RULES}"""
-    user = f"## プロジェクト情報\n{_form_summary(form_data)}{_edit_block(previous_output, edit_instruction)}\n\n背景と目的の明確化レポートHTMLを作成してください。"
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}{_edit_block(previous_output, edit_instruction)}\n\n背景と目的の明確化レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
     return _run_simple(system, user)
 
 
@@ -273,8 +272,11 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
     industry = form_data.get("industry", "")
     competitors = form_data.get("competitors", "")
 
-    system = f"""あなたは市場調査・競合分析の専門家です。
-提供されたWeb調査結果をもとに、市場・競合分析レポートHTMLを作成してください。
+    system = f"""あなたはHTMLレポート生成ツールです。入力されたデータをHTMLに変換して出力するだけです。分析・解釈・注記・コメントは一切不要。
+
+## 絶対禁止事項（違反した場合ツールとして機能しない）
+- ⚠補足・事実確認注記・ファクトチェック・「確認できない」「推測です」などの注釈をHTMLの中に含めること
+- <!DOCTYPE html>より前に文字・説明・コードフェンスを出力すること
 
 ## 含める内容（各セクション最大5項目まで、超過禁止）
 1. **市場規模と成長性**: barチャート＋重要ポイント3〜5件
@@ -307,7 +309,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 ## 既存レポート（追記対象）
 {previous_output[:4000]}
 
-上記の調査結果をもとに、既存HTMLの末尾に「追加深掘り調査結果」セクションを追記した完全なHTMLを返してください。"""
+上記のデータをもとに、既存HTMLの末尾に「追加深掘り調査結果」セクションを追記した完全なHTMLを返してください。必ず<!DOCTYPE html>から始め、⚠補足などの注釈は一切含めないこと。"""
     else:
         # Pre-fetch searches upfront (no tool-use loop)
         queries = [f"{industry} 市場規模 成長率 2024"]
@@ -330,7 +332,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 {search_section}
 {_edit_block(previous_output, edit_instruction)}
 
-上記の調査結果をもとに、市場・競合分析レポートHTMLを作成してください。"""
+上記のデータをHTMLに変換してください。必ず<!DOCTYPE html>から始め、⚠補足などの注釈は一切含めないこと。"""
 
     return _run_simple(system, user, model="claude-sonnet-4-6")
 
@@ -347,7 +349,7 @@ def _why_business_model(form_data, approved, previous_output, edit_instruction):
 
 {HTML_RULES}"""
     ctx = _approved_context(approved)
-    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nビジネスモデル・収益化レポートHTMLを作成してください。"
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nビジネスモデル・収益化レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
     return _run_simple(system, user)
 
 
@@ -369,7 +371,7 @@ def _who_persona(form_data, approved, previous_output, edit_instruction):
 
 {HTML_RULES}"""
     ctx = _approved_context(approved)
-    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nペルソナ定義レポートHTMLを作成してください。"
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nペルソナ定義レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
     return _run_simple(system, user)
 
 
@@ -383,7 +385,7 @@ def _who_value(form_data, approved, previous_output, edit_instruction):
 - USP（ユニークセリングポイント）の言語化
 {HTML_RULES}"""
     ctx = _approved_context(approved)
-    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n提供価値レポートHTMLを作成してください。"
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n提供価値レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
     return _run_simple(system, user)
 
 
@@ -399,7 +401,7 @@ def _who_ux(form_data, approved, previous_output, edit_instruction):
 
 {HTML_RULES}"""
     ctx = _approved_context(approved)
-    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nUX設計レポートHTMLを作成してください。"
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nUX設計レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
     return _run_simple(system, user)
 
 
@@ -415,7 +417,7 @@ def _what_features(form_data, approved, previous_output, edit_instruction):
 
 {HTML_RULES}"""
     ctx = _approved_context(approved)
-    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n機能定義レポートHTMLを作成してください。"
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n機能定義レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
     return _run_simple(system, user)
 
 
@@ -430,7 +432,7 @@ def _what_ia(form_data, approved, previous_output, edit_instruction):
 - レスポンシブ対応方針
 {HTML_RULES}"""
     ctx = _approved_context(approved)
-    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n情報設計・UI方向性レポートHTMLを作成してください。"
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n情報設計・UI方向性レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
     return _run_simple(system, user)
 
 
@@ -445,7 +447,7 @@ def _what_nonfunc(form_data, approved, previous_output, edit_instruction):
 - 運用・保守方針
 {HTML_RULES}"""
     ctx = _approved_context(approved)
-    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n非機能要件レポートHTMLを作成してください。"
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n非機能要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
     return _run_simple(system, user)
 
 
@@ -460,7 +462,7 @@ def _how_platform(form_data, approved, previous_output, edit_instruction):
 - インフラ構成の方向性
 {HTML_RULES}"""
     ctx = _approved_context(approved)
-    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nプラットフォーム・アーキテクチャレポートHTMLを作成してください。"
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nプラットフォーム・アーキテクチャレポートHTMLを<!DOCTYPE html>から始めて作成してください。"
     return _run_simple(system, user)
 
 
@@ -488,7 +490,7 @@ def _how_feasibility(form_data, approved, previous_output, edit_instruction):
         search_section += f"\n### 検索: {q}\n{result}\n"
 
     ctx = _approved_context(approved)
-    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}\n\n## Web調査結果\n{search_section}{_edit_block(previous_output, edit_instruction)}\n\n技術実現可能性レポートHTMLを作成してください。"
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}\n\n## Web調査結果\n{search_section}{_edit_block(previous_output, edit_instruction)}\n\n技術実現可能性レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
     return _run_simple(system, user, model="claude-sonnet-4-6")
 
 
@@ -503,7 +505,7 @@ def _how_integration(form_data, approved, previous_output, edit_instruction):
 - API設計方針
 {HTML_RULES}"""
     ctx = _approved_context(approved)
-    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n外部連携・データ設計レポートHTMLを作成してください。"
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n外部連携・データ設計レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
     return _run_simple(system, user)
 
 
@@ -519,7 +521,7 @@ def _project_schedule(form_data, approved, previous_output, edit_instruction):
 
 {HTML_RULES}"""
     ctx = _approved_context(approved)
-    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nスケジュール・マイルストーンレポートHTMLを作成してください。"
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nスケジュール・マイルストーンレポートHTMLを<!DOCTYPE html>から始めて作成してください。"
     return _run_simple(system, user)
 
 
@@ -535,7 +537,7 @@ def _project_budget(form_data, approved, previous_output, edit_instruction):
 
 {HTML_RULES}"""
     ctx = _approved_context(approved)
-    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n予算・体制レポートHTMLを作成してください。"
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n予算・体制レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
     return _run_simple(system, user)
 
 
@@ -550,7 +552,7 @@ def _project_legal(form_data, approved, previous_output, edit_instruction):
 - 法的リスク優先度マトリクス
 {HTML_RULES}"""
     ctx = _approved_context(approved)
-    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n法務・コンプライアンスレポートHTMLを作成してください。"
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n法務・コンプライアンスレポートHTMLを<!DOCTYPE html>から始めて作成してください。"
     return _run_simple(system, user)
 
 
