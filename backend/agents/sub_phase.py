@@ -135,6 +135,13 @@ def _run_with_tools(system: str, user_msg: str) -> str:
     return ""
 
 
+_CONTINUATION_SYSTEM = (
+    "HTMLコード補完アシスタントとして、途中で切れたHTMLの続きを生成してください。"
+    "HTMLのみ出力。コードフェンス・説明文・分析テキスト・<!DOCTYPE>/<html>/<head>/<body>タグは一切不要。"
+    "最後は必ず</body></html>で終了。"
+)
+
+
 def _run_simple(system: str, user_msg: str, model: str = "claude-haiku-4-5-20251001") -> str:
     """Run Claude without tools. Auto-continues up to 2 times if output is truncated or prematurely closed."""
     client = _get_anthropic()
@@ -142,18 +149,22 @@ def _run_simple(system: str, user_msg: str, model: str = "claude-haiku-4-5-20251
     accumulated = ""
 
     for attempt in range(3):
+        # Use dedicated continuation system on retry to prevent AI from regenerating a full new document
+        active_system = system if attempt == 0 else _CONTINUATION_SYSTEM
         response = _create_with_retry(
             client,
             model=model,
             max_tokens=8192,
-            system=system,
+            system=active_system,
             messages=messages,
         )
         chunk = response.content[0].text
         if attempt == 0:
             accumulated = _strip(chunk)
         else:
-            accumulated += _strip_continuation(chunk)
+            # Remove trailing </body></html> before appending continuation
+            base = re.sub(r'\s*</body>\s*</html>\s*$', '', accumulated.rstrip(), flags=re.IGNORECASE).rstrip()
+            accumulated = base + "\n" + _strip_continuation(chunk)
 
         # Complete only when stop_reason is end_turn AND </html> is present
         html_closed = bool(re.search(r'</html\s*>', accumulated, re.IGNORECASE))
@@ -162,18 +173,14 @@ def _run_simple(system: str, user_msg: str, model: str = "claude-haiku-4-5-20251
 
         # Need continuation: either max_tokens hit, or end_turn without </html> (premature close)
         if attempt < 2:
-            messages.append({"role": "assistant", "content": chunk})
+            # Use processed tail (not raw chunk) to keep conversation history clean
             tail = accumulated[-800:]
+            messages.append({"role": "assistant", "content": tail})
             messages.append({
                 "role": "user",
                 "content": (
-                    "HTMLが途中で切れました。以下の直前の出力末尾を参考に、続きのHTMLを出力してください。\n\n"
-                    f"【直前の出力末尾】\n{tail}\n\n"
-                    "【出力ルール】\n"
-                    "- <!DOCTYPE>, <html>, <head>, <body> などドキュメント開始タグは出力しない\n"
-                    "- コードフェンス（```）は出力しない\n"
-                    "- 説明文・コメントは出力しない\n"
-                    "- 切れた箇所から続きのHTMLのみを出力し、</html> で終了する"
+                    "HTMLが途中で切れました。上記の末尾の直後から続きのHTMLのみを出力してください。\n"
+                    "【ルール】<!DOCTYPE>/<html>/<head>/<body>は不要。コードフェンス不要。説明文不要。</body></html>で終了。"
                 )
             })
     else:
@@ -184,19 +191,27 @@ def _run_simple(system: str, user_msg: str, model: str = "claude-haiku-4-5-20251
 
 def _strip(text: str) -> str:
     text = text.strip()
-    if text.startswith("```html"):
-        text = text[7:]
-    elif text.startswith("```"):
+    # Handle preamble text before code fence (e.g. "Explanation... ```html\n<html>...")
+    if '```html' in text:
+        text = text.split('```html', 1)[1]
+        if text.rstrip().endswith('```'):
+            text = text.rstrip()[:-3]
+        return text.strip()
+    if text.startswith('```'):
         text = text[3:]
-    if text.endswith("```"):
+    if text.endswith('```'):
         text = text[:-3]
     return text.strip()
 
 
 def _strip_continuation(text: str) -> str:
-    """Remove code fences and any restarted HTML document structure from a continuation chunk."""
-    text = _strip(text)
-    # If AI restarted a full HTML document, strip the boilerplate structural tags
+    """Extract HTML body content from a continuation chunk, stripping preamble and document boilerplate."""
+    text = _strip(text)  # handles code fences including preamble + ```html
+    # Fallback: if no code fence but there is preamble text before the HTML document, skip it
+    m = re.search(r'(?i)<!DOCTYPE|<html\b', text)
+    if m and m.start() > 0:
+        text = text[m.start():]
+    # Strip full document boilerplate if AI restarted an HTML document
     text = re.sub(r'(?i)^\s*<!DOCTYPE[^>]*>\s*', '', text)
     text = re.sub(r'(?i)^\s*<html[^>]*>\s*', '', text)
     text = re.sub(r'(?i)^\s*<head\b.*?</head>\s*', '', text, flags=re.DOTALL)
