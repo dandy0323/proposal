@@ -143,19 +143,29 @@ _CONTINUATION_SYSTEM = (
 )
 
 
-def _run_simple(system: str, user_msg: str, model: str = "claude-haiku-4-5-20251001") -> str:
-    """Run Claude without tools. Auto-continues up to 2 times if output is truncated or prematurely closed."""
+def _run_simple(
+    system: str,
+    user_msg: str,
+    model: str = "claude-haiku-4-5-20251001",
+    max_tokens: int = 8192,
+    complete_fn=None,
+) -> str:
+    """Run Claude without tools. Auto-continues up to 2 times if output is truncated or prematurely closed.
+
+    complete_fn: optional callable(html: str) -> bool that returns True only when all
+    required sections are present. When supplied, end_turn + html_closed is NOT treated
+    as complete unless complete_fn also returns True.
+    """
     client = _get_anthropic()
     messages = [{"role": "user", "content": user_msg}]
     accumulated = ""
 
     for attempt in range(3):
-        # Use dedicated continuation system on retry to prevent AI from regenerating a full new document
         active_system = system if attempt == 0 else _CONTINUATION_SYSTEM
         response = _create_with_retry(
             client,
             model=model,
-            max_tokens=8192,
+            max_tokens=max_tokens,
             system=active_system,
             messages=messages,
         )
@@ -163,18 +173,16 @@ def _run_simple(system: str, user_msg: str, model: str = "claude-haiku-4-5-20251
         if attempt == 0:
             accumulated = _strip(chunk)
         else:
-            # Remove trailing </body></html> before appending continuation
             base = re.sub(r'\s*</body>\s*</html>\s*$', '', accumulated.rstrip(), flags=re.IGNORECASE).rstrip()
             accumulated = base + "\n" + _strip_continuation(chunk)
 
-        # Complete only when stop_reason is end_turn AND </html> is present
         html_closed = bool(re.search(r'</html\s*>', accumulated, re.IGNORECASE))
-        if response.stop_reason != "max_tokens" and html_closed:
+        # Accept as complete only when: end_turn AND html_closed AND (no custom check or custom check passes)
+        sections_complete = complete_fn is None or complete_fn(accumulated)
+        if response.stop_reason != "max_tokens" and html_closed and sections_complete:
             break
 
-        # Need continuation: either max_tokens hit, or end_turn without </html> (premature close)
         if attempt < 2:
-            # Use processed tail (not raw chunk) to keep conversation history clean
             tail = accumulated[-800:]
             messages.append({"role": "assistant", "content": tail})
             messages.append({
@@ -270,34 +278,50 @@ def _why_background(form_data, approved, previous_output, edit_instruction):
     return _run_simple(system, user)
 
 
+def _market_analysis_complete(html: str) -> bool:
+    """Return True only when all 3 required market analysis sections are detectably present."""
+    has_chart = bool(re.search(r'<canvas\b', html, re.IGNORECASE))
+    has_table = bool(re.search(r'<table\b', html, re.IGNORECASE))
+    # Ensure there is substantial content after the last </table> (section 3 - trends)
+    table_end = html.lower().rfind('</table>')
+    has_trends = table_end > 0 and len(html) > table_end + 400
+    return has_chart and has_table and has_trends
+
+
 def _why_market(form_data, approved, previous_output, edit_instruction, deep_dive_request=None):
     industry = form_data.get("industry", "")
     competitors = form_data.get("competitors", "")
 
-    system = f"""あなたはHTMLレポート生成ツールです。入力されたデータをHTMLに変換して出力するだけです。分析・解釈・注記・コメントは一切不要。
+    system = f"""あなたはHTMLレポート生成ツールです。入力されたデータをHTMLに変換して出力するだけです。
 
-## 絶対禁止事項（違反した場合ツールとして機能しない）
-- ⚠補足・事実確認注記・ファクトチェック・「確認できない」「推測です」などの注釈をHTMLの中に含めること
+## 絶対禁止事項（違反禁止）
+- ⚠補足・事実確認注記・ファクトチェック・「確認できない」などの注釈をHTMLに含めること
 - <!DOCTYPE html>より前に文字・説明・コードフェンスを出力すること
+- サブセクション（例: 2.1 / 2.2）や指定外セクションの追加
 
-## 含める内容（各セクション最大5項目まで、超過禁止）
-1. **市場規模と成長性**: barチャート＋重要ポイント3〜5件
-2. **競合サービス分析**: 最大5社の比較表（機能・料金・強み・弱みの4列）
-3. **市場トレンド**: 3〜5件のトレンドを箇条書き
+## 出力構成（この3セクションのみ・順番厳守・追加禁止）
+### セクション1: 市場規模と成長性
+- barチャート（3年分の数値）を1つ
+- 箇条書き3件のみ（1項目1行・簡潔に）
 
-## チャート仕様（1種類のみ）
-- 市場規模推移: barチャート（4〜5年分の実際の数値）
+### セクション2: 競合サービス分析
+- 最大3社の比較表（サービス名・特徴・強み・弱みの4列のみ）
+
+### セクション3: 市場トレンド
+- 箇条書き3件のみ（1項目1行・簡潔に）
+
+## チャート仕様（セクション1に1つのみ）
+- 市場規模推移barチャート（3年分）
 {CHART_INSTRUCTIONS}
 
 ## 完了要件（最重要）
-- 必ずセクション1・2・3の全セクションを含めること
-- 全セクション記載後に </body></html> で閉じること
-- トークンが不足しそうな場合は各項目を簡潔にして全セクション完成を優先する
+- セクション1→2→3の順番で全て出力すること（欠落禁止）
+- セクション3の後に必ず </body></html> で閉じること
+- トークン不足の場合は各テキストを1行に短縮して全3セクション完成を絶対優先する
 
 {HTML_RULES}"""
 
     if deep_dive_request and previous_output:
-        # Deep-dive: search for the specific request
         search_results = _search(deep_dive_request)
         user = f"""## プロジェクト情報
 {_form_summary(form_data)}
@@ -313,7 +337,6 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 
 上記のデータをもとに、既存HTMLの末尾に「追加深掘り調査結果」セクションを追記した完全なHTMLを返してください。必ず<!DOCTYPE html>から始め、⚠補足などの注釈は一切含めないこと。"""
     else:
-        # Pre-fetch searches upfront (no tool-use loop)
         queries = [f"{industry} 市場規模 成長率 2024"]
         if competitors:
             for comp in competitors.replace("、", ",").replace("・", ",").split(",")[:3]:
@@ -334,9 +357,9 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 {search_section}
 {_edit_block(previous_output, edit_instruction)}
 
-上記のデータをHTMLに変換してください。必ず<!DOCTYPE html>から始め、⚠補足などの注釈は一切含めないこと。"""
+上記のデータをHTMLに変換してください。必ず<!DOCTYPE html>から始め、セクション1→2→3の順で全て出力し、⚠補足などの注釈は一切含めないこと。"""
 
-    return _run_simple(system, user, model="claude-sonnet-4-6")
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000, complete_fn=_market_analysis_complete)
 
 
 def _why_business_model(form_data, approved, previous_output, edit_instruction):
@@ -493,7 +516,7 @@ def _how_feasibility(form_data, approved, previous_output, edit_instruction):
 
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}\n\n## Web調査結果\n{search_section}{_edit_block(previous_output, edit_instruction)}\n\n技術実現可能性レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
-    return _run_simple(system, user, model="claude-sonnet-4-6")
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000)
 
 
 def _how_integration(form_data, approved, previous_output, edit_instruction):
