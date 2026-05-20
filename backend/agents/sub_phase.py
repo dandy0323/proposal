@@ -191,7 +191,7 @@ def _run_simple(system: str, user_msg: str, model: str = "claude-haiku-4-5-20251
 
 
 def _strip(text: str) -> str:
-    """Return just the HTML content, stripping any preamble text and code fences."""
+    """Return just the HTML content, stripping preamble text, code fences, and ⚠ annotations."""
     text = text.strip()
     # Find code fence in any format: ```html, ```, or ``` + newline + language line
     m = re.search(r'```[ \t]*\w*[ \t]*\n', text)
@@ -204,6 +204,8 @@ def _strip(text: str) -> str:
     m2 = re.search(r'(?i)<!DOCTYPE|<html\b', text)
     if m2 and m2.start() > 0:
         text = text[m2.start():]
+    # Strip ⚠ annotation leaf elements that escaped prompt filtering
+    text = re.sub(r'<(p|div|span|li|td)\b[^>]*>[^<]*⚠[^<]*</\1>', '', text, flags=re.IGNORECASE)
     return text.strip()
 
 

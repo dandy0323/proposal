@@ -12,12 +12,27 @@ function notifyComplete(title, body = 'AI Design Automation') {
   setTimeout(() => n.close(), 6000);
 }
 
+function stripHtmlPreamble(html) {
+  // Strip any text before <!DOCTYPE or <html in case backend _strip missed it.
+  const m = /<!DOCTYPE[\s\S]|<html[\s>]/i.exec(html);
+  if (m && m.index > 0) return html.slice(m.index);
+  return html;
+}
+
 function loadIframe(iframe, html, minHeight) {
+  html = stripHtmlPreamble(html);
   // Start large so all content (including min-h-screen) renders before measuring.
   iframe.style.height = '20000px';
   iframe.onload = () => {
     try {
       const doc = iframe.contentDocument || iframe.contentWindow.document;
+      // Remove ⚠ factcheck annotation leaf elements that escaped prompt filtering.
+      try {
+        const candidates = Array.from(doc.body.querySelectorAll('p,span,div,li,td,th'));
+        for (const el of candidates) {
+          if (!el.querySelector('*') && /⚠/.test(el.textContent)) el.remove();
+        }
+      } catch(_) {}
       let maxBottom = minHeight;
       const els = doc.body.getElementsByTagName('*');
       for (let i = 0; i < els.length; i++) {
