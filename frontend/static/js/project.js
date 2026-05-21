@@ -48,19 +48,50 @@ function loadIframe(iframe, html, minHeight) {
     } catch (_) {
       iframe.style.height = minHeight + 'px';
     }
-    // Force Chart.js re-render. Retry at 300ms and 1s to handle late CDN loads.
-    const forceChartResize = () => {
+    // Ensure Chart.js is loaded and charts are initialized. Retry at 500ms, 1.5s, 3s.
+    const ensureCharts = () => {
       try {
         const win = iframe.contentWindow;
         if (!win) return;
-        if (win.Chart) {
-          Object.values(win.Chart.instances).forEach(c => { try { c.resize(); } catch(_) {} });
+        const doc = win.document || iframe.contentDocument;
+        if (!doc || !doc.body) return;
+
+        // If Chart.js is not yet loaded, inject it then retry
+        if (!win.Chart) {
+          const s = doc.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+          s.onload = () => ensureCharts();
+          doc.head.appendChild(s);
+          return;
         }
-        // Re-measure iframe height after charts may have grown
+
+        // Check for canvas elements without a Chart instance
+        const canvases = doc.querySelectorAll('canvas');
+        let uninit = 0;
+        canvases.forEach(c => {
+          const inst = (win.Chart.getChart ? win.Chart.getChart(c) : null)
+                    || (win.Chart.instances && Object.values(win.Chart.instances).find(ch => ch.canvas === c));
+          if (!inst) uninit++;
+        });
+
+        // Re-execute inline scripts containing chart init code if any canvas is uninitialized
+        if (uninit > 0) {
+          doc.querySelectorAll('script:not([src])').forEach(s => {
+            if (/new\s+Chart|tryInitCharts/.test(s.textContent)) {
+              try {
+                const ns = doc.createElement('script');
+                ns.textContent = s.textContent;
+                doc.body.appendChild(ns);
+              } catch(_) {}
+            }
+          });
+        }
+
+        // Resize all initialized charts and re-measure iframe
+        try { Object.values(win.Chart.instances || {}).forEach(c => { try { c.resize(); } catch(_) {} }); } catch(_) {}
         let maxBottom = minHeight;
         try {
-          const d = win.document;
-          const all = d.body.getElementsByTagName('*');
+          const all = doc.body.getElementsByTagName('*');
           for (let i = 0; i < all.length; i++) {
             try { const b = all[i].getBoundingClientRect().bottom; if (b > maxBottom) maxBottom = b; } catch(_) {}
           }
@@ -68,8 +99,9 @@ function loadIframe(iframe, html, minHeight) {
         } catch(_) {}
       } catch(_) {}
     };
-    setTimeout(forceChartResize, 300);
-    setTimeout(forceChartResize, 1000);
+    setTimeout(ensureCharts, 500);
+    setTimeout(ensureCharts, 1500);
+    setTimeout(ensureCharts, 3000);
   };
   iframe.src = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
 }

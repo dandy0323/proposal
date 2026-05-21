@@ -169,9 +169,9 @@ def _run_with_tools(system: str, user_msg: str) -> str:
 
 
 _CONTINUATION_SYSTEM = (
-    "HTMLコード補完アシスタントとして、途中で切れたHTMLの続きを生成してください。"
-    "HTMLのみ出力。コードフェンス・説明文・分析テキスト・<!DOCTYPE>/<html>/<head>/<body>タグは一切不要。"
-    "最後は必ず</body></html>で終了。"
+    "あなたはHTMLコード補完専門AIです。渡されたHTMLの末尾から続くHTMLコードのみを出力してください。\n"
+    "【絶対禁止】謝罪文・説明文・解説・Markdown・コードフェンス・<!DOCTYPE>/<html>/<head>/<body>タグの出力\n"
+    "【必須】HTMLタグのみ出力。最後は必ず</body></html>で終了。途中で諦めることは絶対禁止。"
 )
 
 
@@ -220,8 +220,12 @@ def _run_simple(
             messages.append({
                 "role": "user",
                 "content": (
-                    "HTMLが途中で切れました。上記の末尾の直後から続きのHTMLのみを出力してください。\n"
-                    "【ルール】<!DOCTYPE>/<html>/<head>/<body>は不要。コードフェンス不要。説明文不要。</body></html>で終了。"
+                    "HTMLが途中で切れました。上記末尾の直後から続くHTMLコードのみを出力してください。\n"
+                    "【絶対ルール】\n"
+                    "- 謝罪文・説明文・Markdownは一切出力禁止。HTMLタグのみ出力すること。\n"
+                    "- <!DOCTYPE>/<html>/<head>/<body>は不要（本文の続きから開始）\n"
+                    "- 最後は必ず</body></html>で終了\n"
+                    "- 残りの全セクションを省略せず完全に出力すること"
                 )
             })
     else:
@@ -252,8 +256,15 @@ def _strip(text: str) -> str:
 
 
 def _strip_continuation(text: str) -> str:
-    """Extract HTML body content from a continuation chunk."""
+    """Extract HTML body content from a continuation chunk.
+
+    Returns empty string if the AI returned an apology/explanation instead of HTML,
+    preventing error text from being injected into the accumulated HTML.
+    """
     text = _strip(text)
+    # Reject if the result has no HTML tags — AI sent plain text / markdown instead of HTML
+    if not re.search(r'<[a-zA-Z][^>]{0,100}>', text):
+        return ''
     # Strip full document boilerplate if AI restarted an HTML document
     text = re.sub(r'(?i)^\s*<!DOCTYPE[^>]*>\s*', '', text)
     text = re.sub(r'(?i)^\s*<html[^>]*>\s*', '', text)
