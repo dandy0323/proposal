@@ -214,6 +214,8 @@ def _strip(text: str) -> str:
         text = text[m2.start():]
     # Strip ⚠ annotation leaf elements that escaped prompt filtering
     text = re.sub(r'<(p|div|span|li|td)\b[^>]*>[^<]*⚠[^<]*</\1>', '', text, flags=re.IGNORECASE)
+    # Remove empty structural elements left by continuation artifacts
+    text = re.sub(r'<(div|section|blockquote|aside)\b[^>]*>\s*</\1>', '', text, flags=re.IGNORECASE | re.DOTALL)
     return text.strip()
 
 
@@ -279,13 +281,20 @@ def _why_background(form_data, approved, previous_output, edit_instruction):
 
 
 def _market_analysis_complete(html: str) -> bool:
-    """Return True only when all 3 required market analysis sections are detectably present."""
-    has_chart = bool(re.search(r'<canvas\b', html, re.IGNORECASE))
-    has_table = bool(re.search(r'<table\b', html, re.IGNORECASE))
-    # Ensure there is substantial content after the last </table> (section 3 - trends)
-    table_end = html.lower().rfind('</table>')
-    has_trends = table_end > 0 and len(html) > table_end + 400
-    return has_chart and has_table and has_trends
+    """Return True when all 3 market sections are detectably present.
+
+    Does NOT require <table> since AI sometimes generates card-based layouts.
+    """
+    # Section 1: a Chart.js canvas must be present
+    has_chart = bool(re.search(r'<canvas\b|new Chart\(', html, re.IGNORECASE))
+    # Section 2: competitive analysis — table OR competitor-related keywords with enough content
+    has_competitive = bool(re.search(r'<table\b|競合|competitor', html, re.IGNORECASE))
+    # Section 3: trend keywords must appear in the latter half of the document
+    midpoint = len(html) // 2
+    has_trends = bool(re.search(r'トレンド|trend|動向', html[midpoint:], re.IGNORECASE))
+    # Overall length check: all 3 compact sections should produce at least 2000 chars
+    is_substantial = len(html) >= 2000
+    return has_chart and has_competitive and has_trends and is_substantial
 
 
 def _why_market(form_data, approved, previous_output, edit_instruction, deep_dive_request=None):

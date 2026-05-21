@@ -27,10 +27,13 @@ function loadIframe(iframe, html, minHeight) {
     try {
       const doc = iframe.contentDocument || iframe.contentWindow.document;
       // Remove ⚠ factcheck annotation leaf elements that escaped prompt filtering.
+      // Also remove empty structural elements left by continuation artifacts.
       try {
-        const candidates = Array.from(doc.body.querySelectorAll('p,span,div,li,td,th'));
+        const candidates = Array.from(doc.body.querySelectorAll('p,span,div,li,td,th,section,blockquote,aside'));
         for (const el of candidates) {
-          if (!el.querySelector('*') && /⚠/.test(el.textContent)) el.remove();
+          const hasChildren = el.querySelector('*');
+          if (!hasChildren && /⚠/.test(el.textContent)) { el.remove(); continue; }
+          if (!hasChildren && !el.textContent.trim()) el.remove();
         }
       } catch(_) {}
       let maxBottom = minHeight;
