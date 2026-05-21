@@ -12,32 +12,35 @@ CHART_INSTRUCTIONS = """
 
 【HTML部分 — canvas配置（bodyタグ内）】
 <div style="position:relative;width:100%;height:280px;margin:1rem 0;">
-  <canvas id="market-chart"></canvas>
+  <canvas id="market-chart" width="800" height="280"></canvas>
 </div>
 
-【Script部分 — body終了タグの直前に1つのブロックとしてまとめて配置】
+【Script部分 — body終了タグの直前に1つのブロックとしてまとめて配置。複数チャートがある場合もこの1ブロックにまとめる】
 <script>
 window.addEventListener('load', function() {
-  new Chart(document.getElementById('market-chart'), {
-    type: 'bar',
-    data: {
-      labels: [★年1★, ★年2★, ★年3★],
-      datasets: [{
-        label: ★単位ラベル★,
-        data: [★値1★, ★値2★, ★値3★],
-        backgroundColor: 'rgba(59,130,246,0.7)',
-        borderColor: 'rgba(59,130,246,1)',
-        borderWidth: 1
-      }]
-    },
-    options: { responsive: true, maintainAspectRatio: false }
-  });
+  var ctx = document.getElementById('market-chart');
+  if (ctx) {
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: [★年1★, ★年2★, ★年3★],
+        datasets: [{
+          label: ★単位ラベル★,
+          data: [★値1★, ★値2★, ★値3★],
+          backgroundColor: 'rgba(59,130,246,0.7)',
+          borderColor: 'rgba(59,130,246,1)',
+          borderWidth: 1
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+  }
 });
 </script>
 
 【必須ルール】
-- canvasのid="market-chart" は絶対に変更禁止（JavaScriptと一致させるため）
-- window.addEventListener('load', ...) に全チャートをまとめる（分割禁止）
+- canvasの width="800" height="280" 属性は必須（削除禁止）
+- 複数チャートを使う場合は canvas ごとに別のIDを付け、全て1つのaddEventListener内にまとめる
 - window.onload = は絶対使用禁止
 - CDN: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>（headタグ内）
 - 数値は実際の調査データを使うこと（空配列・0埋め禁止）
@@ -308,21 +311,35 @@ def _why_background(form_data, approved, previous_output, edit_instruction):
 
 
 def _market_analysis_complete(html: str) -> bool:
-    """Return True when all 3 market sections are detectably present.
+    """Return True when all sections promised in the TOC are present in the body.
 
-    Uses the hardcoded canvas id 'market-chart' from CHART_INSTRUCTIONS as a
-    reliable section-1 signal, and looks for '市場トレンド' which is the exact
-    section-3 header keyword mandated by the prompt.
+    If no TOC is found, falls back to checking for the 3 essential sections.
     """
-    # Section 1: chart canvas with our hardcoded id OR any Chart.js init
-    has_chart = bool(re.search(r'market-chart|<canvas\b|new Chart\(', html, re.IGNORECASE))
-    # Section 2: competitive analysis content
+    # Must have a chart canvas
+    if not re.search(r'<canvas\b', html, re.IGNORECASE):
+        return False
+    # Must be properly closed
+    if not re.search(r'</html\s*>', html, re.IGNORECASE):
+        return False
+
+    # --- TOC-based check ---
+    # Find the TOC section (目次) and count how many numbered entries it has
+    toc_match = re.search(r'(?:目次|もくじ)', html)
+    if toc_match:
+        toc_area = html[toc_match.start():toc_match.start() + 2000]
+        # Count items like "1.", "2.", "3." ... in the TOC
+        toc_entries = re.findall(r'(?:^|<li[^>]*>)\s*(\d+)[\.．]\s+\S', toc_area, re.MULTILINE)
+        if toc_entries:
+            required = max(int(n) for n in toc_entries)
+            # Count h2 section headings actually present in the full document
+            actual_h2s = len(re.findall(r'<h2\b', html, re.IGNORECASE))
+            # Also accept if section count approximately matches (continuation may add h3 sections)
+            return actual_h2s >= required
+
+    # --- Fallback: 3 essential sections ---
     has_competitive = bool(re.search(r'<table\b|競合|competitor', html, re.IGNORECASE))
-    # Section 3: the literal section header we require in the prompt
-    has_trends = bool(re.search(r'市場トレンド', html))
-    # Must be substantial enough to contain real content
-    is_substantial = len(html) >= 2000
-    return has_chart and has_competitive and has_trends and is_substantial
+    has_trends = bool(re.search(r'トレンド|trend|動向', html, re.IGNORECASE))
+    return has_competitive and has_trends and len(html) >= 3000
 
 
 def _why_market(form_data, approved, previous_output, edit_instruction, deep_dive_request=None):
@@ -334,27 +351,20 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 ## 絶対禁止事項（違反禁止）
 - ⚠補足・事実確認注記・ファクトチェック・「確認できない」などの注釈をHTMLに含めること
 - <!DOCTYPE html>より前に文字・説明・コードフェンスを出力すること
-- サブセクション（例: 2.1 / 2.2）や指定外セクションの追加
 
-## 出力構成（この3セクションのみ・順番厳守・追加禁止）
-### セクション1: 市場規模と成長性
-- barチャート（3年分の数値）を1つ
-- 箇条書き3件のみ（1項目1行・簡潔に）
+## 含める内容（自由に構成してよいが全て出力すること）
+- 市場規模と成長性（barチャート必須）
+- 競合サービス分析（比較表）
+- 市場トレンド・技術動向
+- その他、調査データに基づく有用なセクション
 
-### セクション2: 競合サービス分析
-- 最大3社の比較表（サービス名・特徴・強み・弱みの4列のみ）
-
-### セクション3: 市場トレンド  ← この見出しテキストを必ずそのまま使うこと
-- 箇条書き3件のみ（1項目1行・簡潔に）
-
-## チャート仕様（セクション1に1つのみ）
-- 市場規模推移barチャート（3年分）
+## チャート仕様
 {CHART_INSTRUCTIONS}
 
 ## 完了要件（最重要）
-- セクション1→2→3の順番で全て出力すること（欠落禁止）
-- セクション3の後に必ず </body></html> で閉じること
-- トークン不足の場合は各テキストを1行に短縮して全3セクション完成を絶対優先する
+- 目次（TOC）を生成した場合は、目次に含めた**全セクション**を必ず本文に出力すること（欠落禁止）
+- 全セクション出力後に </body></html> で閉じること
+- トークン不足の場合は各セクションを簡潔にして全セクション完成を絶対優先する
 
 {HTML_RULES}"""
 
