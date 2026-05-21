@@ -48,16 +48,28 @@ function loadIframe(iframe, html, minHeight) {
     } catch (_) {
       iframe.style.height = minHeight + 'px';
     }
-    // Force Chart.js re-render after iframe resize.
-    // Also retry after a short delay in case charts initialized after iframe.onload.
+    // Force Chart.js re-render. Retry at 300ms and 1s to handle late CDN loads.
     const forceChartResize = () => {
       try {
         const win = iframe.contentWindow;
-        if (win && win.Chart) Object.values(win.Chart.instances).forEach(c => { try { c.resize(); } catch(_) {} });
+        if (!win) return;
+        if (win.Chart) {
+          Object.values(win.Chart.instances).forEach(c => { try { c.resize(); } catch(_) {} });
+        }
+        // Re-measure iframe height after charts may have grown
+        let maxBottom = minHeight;
+        try {
+          const d = win.document;
+          const all = d.body.getElementsByTagName('*');
+          for (let i = 0; i < all.length; i++) {
+            try { const b = all[i].getBoundingClientRect().bottom; if (b > maxBottom) maxBottom = b; } catch(_) {}
+          }
+          if (maxBottom + 40 > parseInt(iframe.style.height)) iframe.style.height = (maxBottom + 40) + 'px';
+        } catch(_) {}
       } catch(_) {}
     };
-    forceChartResize();
     setTimeout(forceChartResize, 300);
+    setTimeout(forceChartResize, 1000);
   };
   iframe.src = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
 }

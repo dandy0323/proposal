@@ -8,13 +8,39 @@ from tavily import TavilyClient
 from backend.constants import SUB_PHASE_LABELS
 
 CHART_INSTRUCTIONS = """
-## チャート描画の必須ルール
-- Chart.js CDN: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-- 全チャートの初期化は必ず1つのscriptブロックにまとめ window.addEventListener('load', function() { /* 全new Chart()をここに */ }); で囲む
-- window.onload = function(){} は絶対使用禁止（2つ書くと2つ目が1つ目を上書きしてどちらも動かなくなるため）
-- データは必ず実際の数値または調査に基づく推定値を設定する（空配列・0埋めは禁止）
-- canvas要素のidを正確に参照してからnew Chart()を呼ぶ
-- グラフごとに固有のidをcanvasに付与する
+## チャート描画（以下のコードテンプレートをそのまま使い、★印の部分だけ実データに置き換えること）
+
+【HTML部分 — canvas配置（bodyタグ内）】
+<div style="position:relative;width:100%;height:280px;margin:1rem 0;">
+  <canvas id="market-chart"></canvas>
+</div>
+
+【Script部分 — body終了タグの直前に1つのブロックとしてまとめて配置】
+<script>
+window.addEventListener('load', function() {
+  new Chart(document.getElementById('market-chart'), {
+    type: 'bar',
+    data: {
+      labels: [★年1★, ★年2★, ★年3★],
+      datasets: [{
+        label: ★単位ラベル★,
+        data: [★値1★, ★値2★, ★値3★],
+        backgroundColor: 'rgba(59,130,246,0.7)',
+        borderColor: 'rgba(59,130,246,1)',
+        borderWidth: 1
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false }
+  });
+});
+</script>
+
+【必須ルール】
+- canvasのid="market-chart" は絶対に変更禁止（JavaScriptと一致させるため）
+- window.addEventListener('load', ...) に全チャートをまとめる（分割禁止）
+- window.onload = は絶対使用禁止
+- CDN: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>（headタグ内）
+- 数値は実際の調査データを使うこと（空配列・0埋め禁止）
 """
 
 HTML_RULES = """
@@ -284,16 +310,17 @@ def _why_background(form_data, approved, previous_output, edit_instruction):
 def _market_analysis_complete(html: str) -> bool:
     """Return True when all 3 market sections are detectably present.
 
-    Does NOT require <table> since AI sometimes generates card-based layouts.
+    Uses the hardcoded canvas id 'market-chart' from CHART_INSTRUCTIONS as a
+    reliable section-1 signal, and looks for '市場トレンド' which is the exact
+    section-3 header keyword mandated by the prompt.
     """
-    # Section 1: a Chart.js canvas must be present
-    has_chart = bool(re.search(r'<canvas\b|new Chart\(', html, re.IGNORECASE))
-    # Section 2: competitive analysis — table OR competitor-related keywords with enough content
+    # Section 1: chart canvas with our hardcoded id OR any Chart.js init
+    has_chart = bool(re.search(r'market-chart|<canvas\b|new Chart\(', html, re.IGNORECASE))
+    # Section 2: competitive analysis content
     has_competitive = bool(re.search(r'<table\b|競合|competitor', html, re.IGNORECASE))
-    # Section 3: trend keywords must appear in the latter half of the document
-    midpoint = len(html) // 2
-    has_trends = bool(re.search(r'トレンド|trend|動向', html[midpoint:], re.IGNORECASE))
-    # Overall length check: all 3 compact sections should produce at least 2000 chars
+    # Section 3: the literal section header we require in the prompt
+    has_trends = bool(re.search(r'市場トレンド', html))
+    # Must be substantial enough to contain real content
     is_substantial = len(html) >= 2000
     return has_chart and has_competitive and has_trends and is_substantial
 
@@ -317,7 +344,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 ### セクション2: 競合サービス分析
 - 最大3社の比較表（サービス名・特徴・強み・弱みの4列のみ）
 
-### セクション3: 市場トレンド
+### セクション3: 市場トレンド  ← この見出しテキストを必ずそのまま使うこと
 - 箇条書き3件のみ（1項目1行・簡潔に）
 
 ## チャート仕様（セクション1に1つのみ）
