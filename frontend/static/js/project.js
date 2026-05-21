@@ -19,87 +19,6 @@ function stripHtmlPreamble(html) {
   return html;
 }
 
-function _initDataCharts(win, doc, iframe, minHeight) {
-  // Initialize charts from data-attribute canvas elements (new approach).
-  const canvases = doc.querySelectorAll('canvas[data-chart]');
-  if (canvases.length === 0) return;
-
-  const doInit = () => {
-    canvases.forEach(canvas => {
-      if (canvas.dataset.initialized) return;
-      canvas.dataset.initialized = '1';
-      try {
-        const chartType = canvas.dataset.chart || 'bar';
-        const labels = (canvas.dataset.labels || '').split('|').map(s => s.trim()).filter(Boolean);
-        const values = (canvas.dataset.values || '').split(',').map(Number).filter(n => !isNaN(n));
-        const label = canvas.dataset.label || '';
-        if (!win.Chart || labels.length === 0 || values.length === 0) return;
-        new win.Chart(canvas, {
-          type: chartType,
-          data: {
-            labels,
-            datasets: [{ label, data: values,
-              backgroundColor: 'rgba(59,130,246,0.7)',
-              borderColor: 'rgba(59,130,246,1)', borderWidth: 1 }]
-          },
-          options: { responsive: true, maintainAspectRatio: false }
-        });
-      } catch(_) {}
-    });
-    // Re-measure iframe height after charts render
-    setTimeout(() => {
-      try {
-        let maxBottom = minHeight;
-        const all = doc.body.getElementsByTagName('*');
-        for (let i = 0; i < all.length; i++) {
-          try { const b = all[i].getBoundingClientRect().bottom; if (b > maxBottom) maxBottom = b; } catch(_) {}
-        }
-        if (maxBottom + 40 > parseInt(iframe.style.height)) iframe.style.height = (maxBottom + 40) + 'px';
-      } catch(_) {}
-    }, 150);
-  };
-
-  if (win.Chart) {
-    doInit();
-  } else {
-    // Chart.js CDN failed — inject dynamically
-    const s = doc.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/chart.js';
-    s.onload = doInit;
-    doc.head.appendChild(s);
-  }
-}
-
-function _ensureLegacyCharts(win, doc, minHeight, iframe) {
-  // Fallback for old-style HTML: <canvas> without data-chart but with inline Chart.js scripts.
-  if (!win.Chart) return;
-  const canvases = doc.querySelectorAll('canvas:not([data-chart])');
-  let uninit = 0;
-  canvases.forEach(c => {
-    try {
-      const inst = (win.Chart.getChart ? win.Chart.getChart(c) : null)
-                || Object.values(win.Chart.instances || {}).find(ch => ch.canvas === c);
-      if (!inst) uninit++;
-    } catch(_) {}
-  });
-  if (uninit > 0) {
-    doc.querySelectorAll('script:not([src])').forEach(s => {
-      if (!/new\s+Chart/.test(s.textContent)) return;
-      try {
-        // Strip window.addEventListener('load',...) / window.onload= wrappers —
-        // the load event already fired; the inner code must run directly.
-        let code = s.textContent;
-        code = code.replace(/window\.addEventListener\s*\(\s*['"]load['"]\s*,\s*function\s*\(\s*\)\s*\{([\s\S]*?)\}\s*(?:,\s*false\s*)?\)\s*;?/g, '$1');
-        code = code.replace(/window\.onload\s*=\s*function\s*\(\s*\)\s*\{([\s\S]*?)\}\s*;?/g, '$1');
-        const ns = doc.createElement('script');
-        ns.textContent = code;
-        doc.body.appendChild(ns);
-      } catch(_) {}
-    });
-  }
-  try { Object.values(win.Chart.instances || {}).forEach(c => { try { c.resize(); } catch(_) {} }); } catch(_) {}
-}
-
 function loadIframe(iframe, html, minHeight) {
   html = stripHtmlPreamble(html);
   iframe.style.height = '20000px';
@@ -121,18 +40,6 @@ function loadIframe(iframe, html, minHeight) {
       }
       iframe.style.height = (maxBottom + 40) + 'px';
     } catch (_) { iframe.style.height = minHeight + 'px'; }
-
-    const win = iframe.contentWindow;
-    const doc2 = iframe.contentDocument || (win && win.document);
-    if (!win || !doc2 || !doc2.body) return;
-
-    // New approach: initialize charts from data attributes
-    _initDataCharts(win, doc2, iframe, minHeight);
-
-    // Legacy fallback: re-execute inline Chart.js scripts if canvases are uninitialized
-    const retryLegacy = () => _ensureLegacyCharts(win, doc2, minHeight, iframe);
-    setTimeout(retryLegacy, 500);
-    setTimeout(retryLegacy, 2000);
   };
   iframe.src = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
 }

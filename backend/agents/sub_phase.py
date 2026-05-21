@@ -8,26 +8,39 @@ from tavily import TavilyClient
 from backend.constants import SUB_PHASE_LABELS
 
 CHART_INSTRUCTIONS = """
-## チャート描画（以下のフォーマットを正確に使い、★部分だけ実データに置き換えること）
+## バーチャート（CSSのみ・外部CDN不要・JavaScriptなし）
 
-【canvas配置 — bodyタグ内に挿入】
-<div style="position:relative;width:100%;height:280px;margin:1rem 0;">
-  <canvas
-    data-chart="bar"
-    data-labels="★年1★|★年2★|★年3★"
-    data-values="★値1★,★値2★,★値3★"
-    data-label="★単位ラベル★"
-    width="800" height="280">
-  </canvas>
+【テンプレート — ★印を実データに置き換えること。heightの%は「値÷最大値×100」で計算】
+
+<div style="margin:1.5rem 0;padding:16px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+  <div style="font-size:13px;font-weight:600;color:#334155;margin-bottom:12px;">★単位ラベル（例:市場規模 億円）★</div>
+  <div style="display:flex;align-items:flex-end;height:160px;gap:8px;">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">
+      <span style="font-size:11px;font-weight:700;color:#1e40af;">★値1★</span>
+      <div style="width:70%;height:★h1%★;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">
+      <span style="font-size:11px;font-weight:700;color:#1e40af;">★値2★</span>
+      <div style="width:70%;height:★h2%★;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">
+      <span style="font-size:11px;font-weight:700;color:#1e40af;">★値3★</span>
+      <div style="width:70%;height:★h3%★;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:6px;border-top:2px solid #cbd5e1;padding-top:6px;">
+    <div style="flex:1;text-align:center;font-size:11px;color:#64748b;">★年1★</div>
+    <div style="flex:1;text-align:center;font-size:11px;color:#64748b;">★年2★</div>
+    <div style="flex:1;text-align:center;font-size:11px;color:#64748b;">★年3★</div>
+  </div>
 </div>
 
-【必須ルール】
-- data-chart="bar" / data-labels / data-values / data-label 属性は全て必須（削除・変更禁止）
-- data-labels はパイプ(|)区切りのテキスト例: "2022年|2023年|2024年"
-- data-values はカンマ区切りの数値例: "156.0,168.5,185.2"
-- <script>タグでグラフ初期化コードを書かないこと（フレームワーク側が自動処理する）
-- headタグ内に必ず記載: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-- 数値は実際の調査データを使うこと（空配列・0埋め禁止）
+【h%の計算方法】最大値をMとして: h1=round(値1/M*100)  h2=round(値2/M*100)  h3=round(値3/M*100)
+【例】値が[156, 168, 185]のとき M=185 → h1=84  h2=91  h3=100
+【ルール】
+- JavaScriptもCDNも一切不要（このCSSテンプレートだけで動作する）
+- バーが4本以上の場合はdivブロックを増やすだけ
+- 数値は実際の調査データを使うこと（0埋め禁止）
 """
 
 HTML_RULES = """
@@ -329,8 +342,11 @@ def _market_analysis_complete(html: str) -> bool:
 
     If no TOC is found, falls back to checking for the 3 essential sections.
     """
-    # Must have a chart canvas (data-attribute style or legacy)
-    if not re.search(r'<canvas\b[^>]*(?:data-chart|data-values)', html, re.IGNORECASE):
+    # Must have a visible bar chart (CSS-only div or legacy canvas)
+    has_chart = bool(re.search(r'height:\s*\d+%;.*?background.*?rgba\(59,130|rgba\(59,130.*?height:\s*\d+%', html, re.DOTALL))
+    if not has_chart:
+        has_chart = bool(re.search(r'<canvas\b', html, re.IGNORECASE))
+    if not has_chart:
         return False
     # Must be properly closed
     if not re.search(r'</html\s*>', html, re.IGNORECASE):
@@ -348,10 +364,14 @@ def _market_analysis_complete(html: str) -> bool:
             actual = _count_top_level_sections(html)
             return actual >= required
 
-    # --- Fallback: 3 essential sections ---
-    has_competitive = bool(re.search(r'<table\b|競合|competitor', html, re.IGNORECASE))
-    has_trends = bool(re.search(r'トレンド|trend|動向', html, re.IGNORECASE))
-    return has_competitive and has_trends and len(html) >= 3000
+    # --- Fallback: require all 6 mandated sections ---
+    checks = [
+        bool(re.search(r'市場規模|成長性|market.size', html, re.IGNORECASE)),
+        bool(re.search(r'競合|competitor|comparison', html, re.IGNORECASE)),
+        bool(re.search(r'トレンド|trend|動向', html, re.IGNORECASE)),
+        bool(re.search(r'参入障壁|リスク|risk|barrier', html, re.IGNORECASE)),
+    ]
+    return all(checks) and len(html) >= 5000
 
 
 def _why_market(form_data, approved, previous_output, edit_instruction, deep_dive_request=None):
@@ -364,19 +384,22 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 - ⚠補足・事実確認注記・ファクトチェック・「確認できない」などの注釈をHTMLに含めること
 - <!DOCTYPE html>より前に文字・説明・コードフェンスを出力すること
 
-## 含める内容（自由に構成してよいが全て出力すること）
-- 市場規模と成長性（barチャート必須）
-- 競合サービス分析（比較表）
-- 市場トレンド・技術動向
-- その他、調査データに基づく有用なセクション
+## 必須セクション（以下を全て含むこと・省略禁止）
+1. 市場規模と成長性（CSSバーチャート必須、数値データを含む）
+2. グローバル市場 vs 日本市場の比較
+3. 競合サービス・プロダクト分析（比較表）
+4. 市場トレンド・技術動向
+5. 参入障壁・リスク分析
+6. 市場機会・成長ドライバー
 
-## チャート仕様
+## バーチャート仕様（CSSのみ・CDN不要）
 {CHART_INSTRUCTIONS}
 
 ## 完了要件（最重要）
-- 目次（TOC）を生成した場合は、目次に含めた**全セクション**を必ず本文に出力すること（欠落禁止）
+- 上記6セクションを全て本文に出力すること（1つでも欠落したら不完全）
 - 全セクション出力後に </body></html> で閉じること
-- トークン不足の場合は各セクションを簡潔にして全セクション完成を絶対優先する
+- トークン不足の場合は各セクションの文章を短くして全6セクション完成を絶対優先する
+- 目次を作る場合は本文と一致させること
 
 {HTML_RULES}"""
 
