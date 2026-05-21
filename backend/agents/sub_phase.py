@@ -17,9 +17,11 @@ CHART_INSTRUCTIONS = """
 
 【Script部分 — body終了タグの直前に1つのブロックとしてまとめて配置。複数チャートがある場合もこの1ブロックにまとめる】
 <script>
-window.addEventListener('load', function() {
+(function tryInitCharts() {
+  if (typeof Chart === 'undefined') { setTimeout(tryInitCharts, 100); return; }
   var ctx = document.getElementById('market-chart');
-  if (ctx) {
+  if (ctx && !ctx.dataset.chartDone) {
+    ctx.dataset.chartDone = '1';
     new Chart(ctx, {
       type: 'bar',
       data: {
@@ -35,13 +37,13 @@ window.addEventListener('load', function() {
       options: { responsive: true, maintainAspectRatio: false }
     });
   }
-});
+})();
 </script>
 
 【必須ルール】
 - canvasの width="800" height="280" 属性は必須（削除禁止）
-- 複数チャートを使う場合は canvas ごとに別のIDを付け、全て1つのaddEventListener内にまとめる
-- window.onload = は絶対使用禁止
+- 複数チャートを使う場合は canvas ごとに別のIDを付け、全て1つの(function tryInitCharts(){...})()内にまとめる
+- window.onload = および window.addEventListener('load',...) は使用禁止（ポーリング方式を使うこと）
 - CDN: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>（headタグ内）
 - 数値は実際の調査データを使うこと（空配列・0埋め禁止）
 """
@@ -310,6 +312,16 @@ def _why_background(form_data, approved, previous_output, edit_instruction):
     return _run_simple(system, user)
 
 
+def _count_top_level_sections(html: str) -> int:
+    """Count <h2> headings whose text content starts with 'N.' (top-level only, not '1-1.')."""
+    count = 0
+    for m in re.finditer(r'<h2\b[^>]*>(.*?)</h2>', html, re.IGNORECASE | re.DOTALL):
+        text = re.sub(r'<[^>]+>', '', m.group(1)).strip()
+        if re.match(r'\d+[\.．]\s', text):
+            count += 1
+    return count
+
+
 def _market_analysis_complete(html: str) -> bool:
     """Return True when all sections promised in the TOC are present in the body.
 
@@ -323,18 +335,16 @@ def _market_analysis_complete(html: str) -> bool:
         return False
 
     # --- TOC-based check ---
-    # Find the TOC section (目次) and count how many numbered entries it has
     toc_match = re.search(r'(?:目次|もくじ)', html)
     if toc_match:
-        toc_area = html[toc_match.start():toc_match.start() + 2000]
-        # Count items like "1.", "2.", "3." ... in the TOC
-        toc_entries = re.findall(r'(?:^|<li[^>]*>)\s*(\d+)[\.．]\s+\S', toc_area, re.MULTILINE)
+        toc_area = html[toc_match.start():toc_match.start() + 3000]
+        # Match only top-level entries: "1." "2." ... (not "1-1." sub-entries)
+        toc_entries = re.findall(r'(?:^|>)\s*(\d+)[\.．]\s+\S', toc_area, re.MULTILINE)
         if toc_entries:
             required = max(int(n) for n in toc_entries)
-            # Count h2 section headings actually present in the full document
-            actual_h2s = len(re.findall(r'<h2\b', html, re.IGNORECASE))
-            # Also accept if section count approximately matches (continuation may add h3 sections)
-            return actual_h2s >= required
+            # Only count top-level h2 headings (text starts with "N. " not "N-M. ")
+            actual = _count_top_level_sections(html)
+            return actual >= required
 
     # --- Fallback: 3 essential sections ---
     has_competitive = bool(re.search(r'<table\b|競合|competitor', html, re.IGNORECASE))
@@ -404,7 +414,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 {search_section}
 {_edit_block(previous_output, edit_instruction)}
 
-上記のデータをHTMLに変換してください。必ず<!DOCTYPE html>から始め、セクション1→2→3の順で全て出力し、⚠補足などの注釈は一切含めないこと。"""
+上記のデータをHTMLに変換してください。必ず<!DOCTYPE html>から始め、目次に記載した全セクションを本文に出力し、⚠補足などの注釈は一切含めないこと。"""
 
     return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000, complete_fn=_market_analysis_complete)
 

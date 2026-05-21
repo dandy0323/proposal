@@ -57,7 +57,11 @@ echo サーバーを停止するには Ctrl+C を押してください。
 echo.
 
 REM 自動pull（30秒ごとにバックグラウンドで実行・ウィンドウなし）
-start "" powershell -WindowStyle Hidden -Command "while($true){Start-Sleep 30; git -C '%~dp0.' fetch origin claude/ai-design-automation-app-xju0x 2>$null; git -C '%~dp0.' pull origin claude/ai-design-automation-app-xju0x 2>$null}"
+set "vbs=%TEMP%\autopull.vbs"
+echo Set sh = CreateObject("WScript.Shell") > "%vbs%"
+echo sh.Run "cmd /c ""%~dp0watch_pull.bat""", 0, False >> "%vbs%"
+wscript "%vbs%"
+del "%vbs%" > nul 2>&1
 
 REM ngrokが存在する場合はスマホ用トンネルを自動起動
 where ngrok >nul 2>&1
