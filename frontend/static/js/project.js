@@ -71,7 +71,7 @@ function _initDataCharts(win, doc, iframe, minHeight) {
 }
 
 function _ensureLegacyCharts(win, doc, minHeight, iframe) {
-  // Fallback for old-style HTML that has <canvas> without data-chart but with inline Chart.js scripts.
+  // Fallback for old-style HTML: <canvas> without data-chart but with inline Chart.js scripts.
   if (!win.Chart) return;
   const canvases = doc.querySelectorAll('canvas:not([data-chart])');
   let uninit = 0;
@@ -84,9 +84,17 @@ function _ensureLegacyCharts(win, doc, minHeight, iframe) {
   });
   if (uninit > 0) {
     doc.querySelectorAll('script:not([src])').forEach(s => {
-      if (/new\s+Chart/.test(s.textContent)) {
-        try { const ns = doc.createElement('script'); ns.textContent = s.textContent; doc.body.appendChild(ns); } catch(_) {}
-      }
+      if (!/new\s+Chart/.test(s.textContent)) return;
+      try {
+        // Strip window.addEventListener('load',...) / window.onload= wrappers —
+        // the load event already fired; the inner code must run directly.
+        let code = s.textContent;
+        code = code.replace(/window\.addEventListener\s*\(\s*['"]load['"]\s*,\s*function\s*\(\s*\)\s*\{([\s\S]*?)\}\s*(?:,\s*false\s*)?\)\s*;?/g, '$1');
+        code = code.replace(/window\.onload\s*=\s*function\s*\(\s*\)\s*\{([\s\S]*?)\}\s*;?/g, '$1');
+        const ns = doc.createElement('script');
+        ns.textContent = code;
+        doc.body.appendChild(ns);
+      } catch(_) {}
     });
   }
   try { Object.values(win.Chart.instances || {}).forEach(c => { try { c.resize(); } catch(_) {} }); } catch(_) {}

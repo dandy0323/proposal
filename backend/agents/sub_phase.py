@@ -205,10 +205,16 @@ def _run_simple(
             system=_CONTINUATION_SYSTEM, messages=cont_messages,
         )
         chunk = response.content[0].text
-        cont = _strip_continuation(chunk)
-        if cont:
-            base = re.sub(r'\s*</body>\s*</html>\s*$', '', accumulated.rstrip(), flags=re.IGNORECASE).rstrip()
-            accumulated = base + "\n" + cont
+        # If AI restarted with a full document, replace accumulated (not append)
+        if re.search(r'(?i)<!DOCTYPE\s+html', chunk):
+            new_doc = _strip(chunk)
+            if new_doc and re.search(r'</html\s*>', new_doc, re.IGNORECASE):
+                accumulated = new_doc
+        else:
+            cont = _strip_continuation(chunk)
+            if cont:
+                base = re.sub(r'\s*</body>\s*</html>\s*$', '', accumulated.rstrip(), flags=re.IGNORECASE).rstrip()
+                accumulated = base + "\n" + cont
 
     # Final completeness check
     html_closed = bool(re.search(r'</html\s*>', accumulated, re.IGNORECASE))
