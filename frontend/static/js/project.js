@@ -48,11 +48,16 @@ function loadIframe(iframe, html, minHeight) {
     } catch (_) {
       iframe.style.height = minHeight + 'px';
     }
-    // Force Chart.js re-render after iframe resize
-    try {
-      const win = iframe.contentWindow;
-      if (win.Chart) Object.values(win.Chart.instances).forEach(c => { try { c.resize(); } catch(_) {} });
-    } catch(_) {}
+    // Force Chart.js re-render after iframe resize.
+    // Also retry after a short delay in case charts initialized after iframe.onload.
+    const forceChartResize = () => {
+      try {
+        const win = iframe.contentWindow;
+        if (win && win.Chart) Object.values(win.Chart.instances).forEach(c => { try { c.resize(); } catch(_) {} });
+      } catch(_) {}
+    };
+    forceChartResize();
+    setTimeout(forceChartResize, 300);
   };
   iframe.src = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
 }

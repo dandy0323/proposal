@@ -10,7 +10,8 @@ from backend.constants import SUB_PHASE_LABELS
 CHART_INSTRUCTIONS = """
 ## チャート描画の必須ルール
 - Chart.js CDN: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-- 全チャートは必ず window.onload = function() { ... }; の中で初期化する（DOMContentLoadedは使用しない）
+- 全チャートの初期化は必ず1つのscriptブロックにまとめ window.addEventListener('load', function() { /* 全new Chart()をここに */ }); で囲む
+- window.onload = function(){} は絶対使用禁止（2つ書くと2つ目が1つ目を上書きしてどちらも動かなくなるため）
 - データは必ず実際の数値または調査に基づく推定値を設定する（空配列・0埋めは禁止）
 - canvas要素のidを正確に参照してからnew Chart()を呼ぶ
 - グラフごとに固有のidをcanvasに付与する
