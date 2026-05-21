@@ -8,39 +8,39 @@ from tavily import TavilyClient
 from backend.constants import SUB_PHASE_LABELS
 
 CHART_INSTRUCTIONS = """
-## バーチャート（CSSのみ・外部CDN不要・JavaScriptなし）
+## CSSバーチャート（ピクセル高さ指定・JavaScriptなし・CDN不要）
 
-【テンプレート — ★印を実データに置き換えること。heightの%は「値÷最大値×100」で計算】
+【px高さの計算式】max = 最大値。バーのpx高さ = round(値 / max × 160)
+【例】値が[1200, 1680, 2100]の場合 max=2100 → px高さ: [91, 128, 160]
+
+【テンプレート（★を実データに必ず置き換えること）】
 
 <div style="margin:1.5rem 0;padding:16px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
-  <div style="font-size:13px;font-weight:600;color:#334155;margin-bottom:12px;">★単位ラベル（例:市場規模 億円）★</div>
-  <div style="display:flex;align-items:flex-end;height:160px;gap:8px;">
-    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">
-      <span style="font-size:11px;font-weight:700;color:#1e40af;">★値1★</span>
-      <div style="width:70%;height:★h1%★;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
+  <p style="font-size:13px;font-weight:600;color:#334155;margin:0 0 10px 0;">★グラフタイトル（単位）★</p>
+  <div style="display:flex;align-items:flex-end;gap:10px;">
+    <div style="flex:1;text-align:center;">
+      <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:4px;">★値1★</div>
+      <div style="height:★px1★px;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px;border-top:2px solid #cbd5e1;padding-top:2px;">★ラベル1★</div>
     </div>
-    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">
-      <span style="font-size:11px;font-weight:700;color:#1e40af;">★値2★</span>
-      <div style="width:70%;height:★h2%★;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
+    <div style="flex:1;text-align:center;">
+      <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:4px;">★値2★</div>
+      <div style="height:★px2★px;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px;border-top:2px solid #cbd5e1;padding-top:2px;">★ラベル2★</div>
     </div>
-    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">
-      <span style="font-size:11px;font-weight:700;color:#1e40af;">★値3★</span>
-      <div style="width:70%;height:★h3%★;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
+    <div style="flex:1;text-align:center;">
+      <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:4px;">★値3★</div>
+      <div style="height:★px3★px;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px;border-top:2px solid #cbd5e1;padding-top:2px;">★ラベル3★</div>
     </div>
-  </div>
-  <div style="display:flex;gap:8px;margin-top:6px;border-top:2px solid #cbd5e1;padding-top:6px;">
-    <div style="flex:1;text-align:center;font-size:11px;color:#64748b;">★年1★</div>
-    <div style="flex:1;text-align:center;font-size:11px;color:#64748b;">★年2★</div>
-    <div style="flex:1;text-align:center;font-size:11px;color:#64748b;">★年3★</div>
   </div>
 </div>
 
-【h%の計算方法】最大値をMとして: h1=round(値1/M*100)  h2=round(値2/M*100)  h3=round(値3/M*100)
-【例】値が[156, 168, 185]のとき M=185 → h1=84  h2=91  h3=100
-【ルール】
-- JavaScriptもCDNも一切不要（このCSSテンプレートだけで動作する）
-- バーが4本以上の場合はdivブロックを増やすだけ
-- 数値は実際の調査データを使うこと（0埋め禁止）
+【バーが4本以上の場合】上記の <div style="flex:1;..."> ... </div> を増やすだけ
+【注意事項】
+- ★マークは必ず実データに置き換えること（★が残っていたら不完全）
+- heightは必ず計算したpx値（例: height:134px）— height:0px・height:auto・height:N%は不可
+- JavaScriptもCDNも一切不要
 """
 
 HTML_RULES = """
@@ -218,16 +218,28 @@ def _run_simple(
             system=_CONTINUATION_SYSTEM, messages=cont_messages,
         )
         chunk = response.content[0].text
-        # If AI restarted with a full document, replace accumulated (not append)
-        if re.search(r'(?i)<!DOCTYPE\s+html', chunk):
+        # Detect full document restart: DOCTYPE or <html> near the top of the chunk
+        chunk_head = chunk[:600]
+        is_restart = bool(
+            re.search(r'(?i)<!DOCTYPE\s+html', chunk)
+            or re.search(r'(?i)<html\b', chunk_head)
+        )
+        if is_restart:
             new_doc = _strip(chunk)
-            if new_doc and re.search(r'</html\s*>', new_doc, re.IGNORECASE):
+            if new_doc:
                 accumulated = new_doc
         else:
             cont = _strip_continuation(chunk)
             if cont:
-                base = re.sub(r'\s*</body>\s*</html>\s*$', '', accumulated.rstrip(), flags=re.IGNORECASE).rstrip()
-                accumulated = base + "\n" + cont
+                # Overlap guard: if cont's opening text already appears early in accumulated,
+                # the AI restarted without DOCTYPE — replace rather than append
+                cont_text_head = re.sub(r'<[^>]+>', '', cont[:300]).strip()
+                acc_text = re.sub(r'<[^>]+>', '', accumulated[:6000]).strip()
+                if len(cont_text_head) > 30 and cont_text_head[:80] in acc_text[:int(len(acc_text) * 0.7)]:
+                    accumulated = _strip(chunk) or accumulated
+                else:
+                    base = re.sub(r'\s*</body>\s*</html>\s*$', '', accumulated.rstrip(), flags=re.IGNORECASE).rstrip()
+                    accumulated = base + "\n" + cont
 
     # Final completeness check
     html_closed = bool(re.search(r'</html\s*>', accumulated, re.IGNORECASE))
@@ -342,8 +354,8 @@ def _market_analysis_complete(html: str) -> bool:
 
     If no TOC is found, falls back to checking for the 3 essential sections.
     """
-    # Must have a visible bar chart (CSS-only div or legacy canvas)
-    has_chart = bool(re.search(r'height:\s*\d+%;.*?background.*?rgba\(59,130|rgba\(59,130.*?height:\s*\d+%', html, re.DOTALL))
+    # Must have a visible bar chart — check for the blue bar color used in the template
+    has_chart = bool(re.search(r'rgba\(59,\s*130,\s*246', html))
     if not has_chart:
         has_chart = bool(re.search(r'<canvas\b', html, re.IGNORECASE))
     if not has_chart:
@@ -385,14 +397,14 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 - <!DOCTYPE html>より前に文字・説明・コードフェンスを出力すること
 
 ## 必須セクション（以下を全て含むこと・省略禁止）
-1. 市場規模と成長性（CSSバーチャート必須、数値データを含む）
+1. 市場規模と成長性（CSSバーチャート必須 — 下記テンプレート使用・ピクセル高さ指定）
 2. グローバル市場 vs 日本市場の比較
 3. 競合サービス・プロダクト分析（比較表）
 4. 市場トレンド・技術動向
 5. 参入障壁・リスク分析
 6. 市場機会・成長ドライバー
 
-## バーチャート仕様（CSSのみ・CDN不要）
+## バーチャート仕様（必ずこのテンプレートを使うこと）
 {CHART_INSTRUCTIONS}
 
 ## 完了要件（最重要）
