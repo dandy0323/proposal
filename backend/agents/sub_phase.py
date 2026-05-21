@@ -8,43 +8,25 @@ from tavily import TavilyClient
 from backend.constants import SUB_PHASE_LABELS
 
 CHART_INSTRUCTIONS = """
-## チャート描画（以下のコードテンプレートをそのまま使い、★印の部分だけ実データに置き換えること）
+## チャート描画（以下のフォーマットを正確に使い、★部分だけ実データに置き換えること）
 
-【HTML部分 — canvas配置（bodyタグ内）】
+【canvas配置 — bodyタグ内に挿入】
 <div style="position:relative;width:100%;height:280px;margin:1rem 0;">
-  <canvas id="market-chart" width="800" height="280"></canvas>
+  <canvas
+    data-chart="bar"
+    data-labels="★年1★|★年2★|★年3★"
+    data-values="★値1★,★値2★,★値3★"
+    data-label="★単位ラベル★"
+    width="800" height="280">
+  </canvas>
 </div>
 
-【Script部分 — body終了タグの直前に1つのブロックとしてまとめて配置。複数チャートがある場合もこの1ブロックにまとめる】
-<script>
-(function tryInitCharts() {
-  if (typeof Chart === 'undefined') { setTimeout(tryInitCharts, 100); return; }
-  var ctx = document.getElementById('market-chart');
-  if (ctx && !ctx.dataset.chartDone) {
-    ctx.dataset.chartDone = '1';
-    new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: [★年1★, ★年2★, ★年3★],
-        datasets: [{
-          label: ★単位ラベル★,
-          data: [★値1★, ★値2★, ★値3★],
-          backgroundColor: 'rgba(59,130,246,0.7)',
-          borderColor: 'rgba(59,130,246,1)',
-          borderWidth: 1
-        }]
-      },
-      options: { responsive: true, maintainAspectRatio: false }
-    });
-  }
-})();
-</script>
-
 【必須ルール】
-- canvasの width="800" height="280" 属性は必須（削除禁止）
-- 複数チャートを使う場合は canvas ごとに別のIDを付け、全て1つの(function tryInitCharts(){...})()内にまとめる
-- window.onload = および window.addEventListener('load',...) は使用禁止（ポーリング方式を使うこと）
-- CDN: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>（headタグ内）
+- data-chart="bar" / data-labels / data-values / data-label 属性は全て必須（削除・変更禁止）
+- data-labels はパイプ(|)区切りのテキスト例: "2022年|2023年|2024年"
+- data-values はカンマ区切りの数値例: "156.0,168.5,185.2"
+- <script>タグでグラフ初期化コードを書かないこと（フレームワーク側が自動処理する）
+- headタグ内に必ず記載: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 - 数値は実際の調査データを使うこと（空配列・0埋め禁止）
 """
 
@@ -182,53 +164,56 @@ def _run_simple(
     max_tokens: int = 8192,
     complete_fn=None,
 ) -> str:
-    """Run Claude without tools. Auto-continues up to 2 times if output is truncated or prematurely closed.
+    """Run Claude without tools. Auto-continues up to 2 times if output is truncated.
 
-    complete_fn: optional callable(html: str) -> bool that returns True only when all
-    required sections are present. When supplied, end_turn + html_closed is NOT treated
-    as complete unless complete_fn also returns True.
+    Each continuation is a FRESH single-turn conversation to avoid the model getting
+    confused by the original long research context in a multi-turn history.
     """
     client = _get_anthropic()
-    messages = [{"role": "user", "content": user_msg}]
-    accumulated = ""
 
-    for attempt in range(3):
-        active_system = system if attempt == 0 else _CONTINUATION_SYSTEM
-        response = _create_with_retry(
-            client,
-            model=model,
-            max_tokens=max_tokens,
-            system=active_system,
-            messages=messages,
-        )
-        chunk = response.content[0].text
-        if attempt == 0:
-            accumulated = _strip(chunk)
-        else:
-            base = re.sub(r'\s*</body>\s*</html>\s*$', '', accumulated.rstrip(), flags=re.IGNORECASE).rstrip()
-            accumulated = base + "\n" + _strip_continuation(chunk)
+    # --- Initial generation ---
+    response = _create_with_retry(
+        client, model=model, max_tokens=max_tokens, system=system,
+        messages=[{"role": "user", "content": user_msg}],
+    )
+    accumulated = _strip(response.content[0].text)
 
+    # --- Continuation loop (up to 2 additional attempts) ---
+    for _ in range(2):
         html_closed = bool(re.search(r'</html\s*>', accumulated, re.IGNORECASE))
-        # Accept as complete only when: end_turn AND html_closed AND (no custom check or custom check passes)
         sections_complete = complete_fn is None or complete_fn(accumulated)
         if response.stop_reason != "max_tokens" and html_closed and sections_complete:
             break
 
-        if attempt < 2:
-            tail = accumulated[-800:]
-            messages.append({"role": "assistant", "content": tail})
-            messages.append({
-                "role": "user",
-                "content": (
-                    "HTMLが途中で切れました。上記末尾の直後から続くHTMLコードのみを出力してください。\n"
-                    "【絶対ルール】\n"
-                    "- 謝罪文・説明文・Markdownは一切出力禁止。HTMLタグのみ出力すること。\n"
-                    "- <!DOCTYPE>/<html>/<head>/<body>は不要（本文の続きから開始）\n"
-                    "- 最後は必ず</body></html>で終了\n"
-                    "- 残りの全セクションを省略せず完全に出力すること"
-                )
-            })
-    else:
+        # Fresh single-turn: provide only the tail as context — no original research noise
+        tail = accumulated[-1500:]
+        cont_messages = [{
+            "role": "user",
+            "content": (
+                "以下のHTMLが途中で切れています。末尾の直後から続くHTMLコードのみを出力してください。\n\n"
+                f"【現在の末尾】\n{tail}\n\n"
+                "【絶対ルール】\n"
+                "- 上記末尾の直後から続くHTMLのみ出力（冒頭の重複は禁止）\n"
+                "- 謝罪文・説明文・Markdownは一切出力禁止\n"
+                "- <!DOCTYPE>/<html>/<head>/<body>タグは出力不要\n"
+                "- 残りの全セクションを省略せず完全に出力すること\n"
+                "- 最後は必ず</body></html>で終了"
+            )
+        }]
+        response = _create_with_retry(
+            client, model=model, max_tokens=max_tokens,
+            system=_CONTINUATION_SYSTEM, messages=cont_messages,
+        )
+        chunk = response.content[0].text
+        cont = _strip_continuation(chunk)
+        if cont:
+            base = re.sub(r'\s*</body>\s*</html>\s*$', '', accumulated.rstrip(), flags=re.IGNORECASE).rstrip()
+            accumulated = base + "\n" + cont
+
+    # Final completeness check
+    html_closed = bool(re.search(r'</html\s*>', accumulated, re.IGNORECASE))
+    sections_complete = complete_fn is None or complete_fn(accumulated)
+    if not (html_closed and sections_complete):
         accumulated += "\n<!-- __TRUNCATED__ -->"
 
     return accumulated
@@ -338,8 +323,8 @@ def _market_analysis_complete(html: str) -> bool:
 
     If no TOC is found, falls back to checking for the 3 essential sections.
     """
-    # Must have a chart canvas
-    if not re.search(r'<canvas\b', html, re.IGNORECASE):
+    # Must have a chart canvas (data-attribute style or legacy)
+    if not re.search(r'<canvas\b[^>]*(?:data-chart|data-values)', html, re.IGNORECASE):
         return False
     # Must be properly closed
     if not re.search(r'</html\s*>', html, re.IGNORECASE):
