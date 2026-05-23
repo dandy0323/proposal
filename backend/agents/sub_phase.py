@@ -129,7 +129,8 @@ def _inject_charts(html: str) -> str:
     """
     # Format 1: <table class="barchart-data">
     def convert_table(m):
-        summary_match = re.search(r'summary="([^"]*)"', m.group(0))
+        # Handle both single and double quotes for summary attribute
+        summary_match = re.search(r'summary=["\']([^"\']*)["\']', m.group(0))
         title = summary_match.group(1) if summary_match else ''
         rows = re.findall(r'<tr>\s*<td[^>]*>(.*?)</td>\s*<td[^>]*>(.*?)</td>\s*</tr>', m.group(0), re.IGNORECASE | re.DOTALL)
         bars = []
@@ -143,8 +144,9 @@ def _inject_charts(html: str) -> str:
         chart = _bars_to_html(bars, title)
         return chart if chart else ''  # Remove empty barchart-data tables entirely
 
+    # Match class="barchart-data" with either quote style and optional extra classes
     html = re.sub(
-        r'<table\b[^>]*class="barchart-data"[^>]*>.*?</table>',
+        r'<table\b[^>]*class=["\'][^"\']*barchart-data[^"\']*["\'][^>]*>.*?</table>',
         convert_table,
         html,
         flags=re.IGNORECASE | re.DOTALL,
@@ -173,12 +175,21 @@ def _inject_charts(html: str) -> str:
 
     html = re.sub(r'<!--\s*CHART:\s*(.*?)\s*-->', convert_comment, html, flags=re.DOTALL)
 
-    # Remove AI-generated empty chart placeholder divs.
-    # AI often creates: <div style="...min-height:200px;..."> <!-- placeholder --> </div>
-    # These produce large blank white boxes. Remove any div with min-height that has
-    # no visible content (only HTML comments or whitespace inside).
+    # Remove canvas elements (AI sometimes generates these as chart placeholders)
+    html = re.sub(r'<canvas\b[^>]*>.*?</canvas>', '', html, flags=re.IGNORECASE | re.DOTALL)
+
+    # Remove empty AI-generated chart placeholder divs.
+    # Pattern: <div style="...min-height/height:Npx..."> containing only comments/whitespace.
+    # These produce large blank white boxes in the rendered output.
     html = re.sub(
-        r'<div\b[^>]*min-height[^>]*>\s*(?:<!--.*?-->\s*)*</div>',
+        r'<div\b[^>]*(?:min-height|height)\s*:\s*\d+[^>]*>\s*(?:<!--.*?-->\s*)*</div>',
+        '',
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    # Also remove empty divs with chart-related class names
+    html = re.sub(
+        r'<div\b[^>]*class="[^"]*chart[^"]*"[^>]*>\s*(?:<!--.*?-->\s*)*</div>',
         '',
         html,
         flags=re.IGNORECASE | re.DOTALL,
@@ -312,18 +323,37 @@ def _gen_market_fragment(user_content: str, max_tokens: int = 8000) -> str:
         )
         text += _strip_continuation(cont_resp.content[0].text)
 
-    # Clean the fragment:
-    # 1. Remove full HTML boilerplate (DOCTYPE/html/head/body start tags via _strip_continuation)
-    result = _strip_continuation(text)
-    # 2. Strip </body></html> from the END — _strip_continuation only strips opening tags,
-    #    not closing ones. Without this every fragment ends with </body></html>, causing
-    #    multiple body/html closing tags in the assembled report which browsers interpret
-    #    as separate documents — sections 2-6 appear "outside" the first document.
-    result = re.sub(r'(?:\s*</body>)?\s*</html>\s*$', '', result.rstrip(), flags=re.IGNORECASE).rstrip()
-    # 3. Strip any AI preamble text that appears before the first HTML tag
+    # Clean the fragment: strip ALL HTML document boilerplate from ANYWHERE in the text.
+    # The AI sometimes generates a mini-document per sub-section (each with its own
+    # DOCTYPE/html/head/body), which leaves embedded </body></html> tags in the middle
+    # of the fragment — browsers stop rendering at the first </html> they see.
+    result = text
+
+    # Remove code fences if present
+    m_fence = re.search(r'```[ \t]*\w*[ \t]*\n', result)
+    if m_fence:
+        result = result[m_fence.end():]
+        if result.rstrip().endswith('```'):
+            result = result.rstrip()[:-3]
+
+    # Strip full HTML document boilerplate from ANYWHERE in the fragment
+    result = re.sub(r'(?i)<!DOCTYPE\b[^>]*>\s*', '', result)
+    result = re.sub(r'(?i)<html\b[^>]*>\s*', '', result)
+    result = re.sub(r'(?i)<head\b.*?</head>\s*', '', result, flags=re.DOTALL)
+    result = re.sub(r'(?i)<body\b[^>]*>\s*', '', result)
+    result = re.sub(r'(?i)\s*</body>\s*</html>', '', result)
+    result = re.sub(r'(?i)\s*</html>', '', result)
+
+    # Reject if no HTML tags remain (AI returned plain text/apology)
+    if not re.search(r'<[a-zA-Z][^>]{0,100}>', result):
+        print(f"[market_fragment] WARN: no HTML tags in result, returning empty")
+        return ''
+
+    # Strip any AI preamble text before the first opening HTML tag
     m_first = re.search(r'<[a-zA-Z]', result)
     if m_first and m_first.start() > 0:
         result = result[m_first.start():]
+
     return result.strip()
 
 
@@ -764,8 +794,20 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         max_tokens=12000,
     )
 
+    print(f"[why_market] s1  len={len(s1)}  preview={s1[:120]!r}")
+    print(f"[why_market] s2  len={len(s2)}  preview={s2[:120]!r}")
+    print(f"[why_market] s3  len={len(s3)}  preview={s3[:120]!r}")
+    print(f"[why_market] s456 len={len(s456)} preview={s456[:120]!r}")
+
     html = _build_market_report_html(industry, s1, s2, s3, s456)
-    return _inject_charts(html)
+    result = _inject_charts(html)
+    print(f"[why_market] final html len={len(result)}")
+
+    import pathlib
+    pathlib.Path('/tmp/debug_market.html').write_text(result)
+    print("[why_market] debug HTML saved to /tmp/debug_market.html")
+
+    return result
 
 
 def _why_business_model(form_data, approved, previous_output, edit_instruction):
