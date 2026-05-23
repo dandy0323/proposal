@@ -8,39 +8,52 @@ from tavily import TavilyClient
 from backend.constants import SUB_PHASE_LABELS
 
 CHART_INSTRUCTIONS = """
-## CSSバーチャート（JavaScriptなし・CDN不要）
+## 横型バーチャート（JavaScriptなし・CDN不要・確実に表示される）
 
-【px高さの計算式】max = 最大値。各バーのheight = round(値 / max × 160)px
+【width%の計算式】max = 最大値。各バーのwidth = round(値 / max × 100)%
 
 【完成例 — このHTMLをそのままコピーして実データに書き換えること】
 
 <div style="margin:1.5rem 0;padding:16px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
-  <p style="font-size:13px;font-weight:600;color:#334155;margin:0 0 10px 0;">市場規模（億円）</p>
-  <div style="display:flex;align-items:flex-end;gap:10px;">
-    <div style="flex:1;text-align:center;">
-      <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:4px;">1,200億</div>
-      <div style="height:91px;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
-      <div style="font-size:11px;color:#64748b;margin-top:4px;border-top:2px solid #cbd5e1;padding-top:2px;">2022年</div>
+  <p style="font-size:13px;font-weight:600;color:#334155;margin:0 0 12px 0;">市場規模推移（億円）</p>
+
+  <div style="margin-bottom:10px;">
+    <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+      <span style="font-size:12px;color:#64748b;">2022年</span>
+      <span style="font-size:12px;font-weight:700;color:#1e40af;">1,200億</span>
     </div>
-    <div style="flex:1;text-align:center;">
-      <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:4px;">1,680億</div>
-      <div style="height:128px;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
-      <div style="font-size:11px;color:#64748b;margin-top:4px;border-top:2px solid #cbd5e1;padding-top:2px;">2023年</div>
+    <div style="height:20px;background:#e2e8f0;border-radius:4px;">
+      <div style="height:20px;width:57%;background:#3b82f6;border-radius:4px;"></div>
     </div>
-    <div style="flex:1;text-align:center;">
-      <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:4px;">2,100億</div>
-      <div style="height:160px;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
-      <div style="font-size:11px;color:#64748b;margin-top:4px;border-top:2px solid #cbd5e1;padding-top:2px;">2024年</div>
+  </div>
+
+  <div style="margin-bottom:10px;">
+    <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+      <span style="font-size:12px;color:#64748b;">2023年</span>
+      <span style="font-size:12px;font-weight:700;color:#1e40af;">1,680億</span>
+    </div>
+    <div style="height:20px;background:#e2e8f0;border-radius:4px;">
+      <div style="height:20px;width:80%;background:#3b82f6;border-radius:4px;"></div>
+    </div>
+  </div>
+
+  <div style="margin-bottom:10px;">
+    <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+      <span style="font-size:12px;color:#64748b;">2024年</span>
+      <span style="font-size:12px;font-weight:700;color:#1e40af;">2,100億</span>
+    </div>
+    <div style="height:20px;background:#e2e8f0;border-radius:4px;">
+      <div style="height:20px;width:100%;background:#3b82f6;border-radius:4px;"></div>
     </div>
   </div>
 </div>
 
 【書き換え手順】
-1. 表示値（1,200億, 1,680億, 2,100億）を実データの値に変える
-2. heightのpx値（91px, 128px, 160px）を round(値/max×160) で計算した値に変える
-3. 軸ラベル（2022年 等）を実際の期間・カテゴリ名に変える
-4. グラフタイトル（市場規模（億円））を変える
-5. バーが4本以上必要な場合は <div style="flex:1;...">...</div> ブロックをそのまま増やす
+1. 表示値（1,200億 等）を実データの値に変える
+2. widthの%値（57%, 80%, 100%）を round(値/max×100) で計算した値に変える
+3. 年ラベルを実際の期間・カテゴリ名に変える
+4. グラフタイトルを変える
+5. 行が4本以上ある場合は <div style="margin-bottom:10px;">...</div> ブロックを追加するだけ
 """
 
 HTML_RULES = """
@@ -190,11 +203,13 @@ def _run_simple(
         messages=[{"role": "user", "content": user_msg}],
     )
     accumulated = _strip(response.content[0].text)
+    print(f"[run_simple] initial: stop={response.stop_reason} len={len(accumulated)} model={model}")
 
     # --- Continuation loop (up to 4 additional attempts) ---
-    for _ in range(4):
+    for attempt in range(4):
         html_closed = bool(re.search(r'</html\s*>', accumulated, re.IGNORECASE))
         sections_complete = complete_fn is None or complete_fn(accumulated)
+        print(f"[run_simple] attempt={attempt} closed={html_closed} complete={sections_complete} len={len(accumulated)}")
         if response.stop_reason != "max_tokens" and html_closed and sections_complete:
             break
 
@@ -373,34 +388,27 @@ def _count_top_level_sections(html: str) -> int:
 
 
 def _market_analysis_complete(html: str) -> bool:
-    """Return True when all sections promised in the TOC are present in the body.
+    """Return True only when ALL 6 required section topics are present.
 
-    If no TOC is found, falls back to checking for the essential sections.
+    Deliberately ignores TOC: AI-generated TOCs may have fewer entries than
+    required (e.g. only 2) which previously caused this check to return True
+    for an incomplete document, suppressing continuation entirely.
     """
-    # Must be properly closed
     if not re.search(r'</html\s*>', html, re.IGNORECASE):
         return False
+    if len(html) < 8000:
+        return False
 
-    # --- TOC-based check ---
-    toc_match = re.search(r'(?:目次|もくじ)', html)
-    if toc_match:
-        toc_area = html[toc_match.start():toc_match.start() + 3000]
-        # Match only top-level entries: "1." "2." ... (not "1-1." sub-entries)
-        toc_entries = re.findall(r'(?:^|>)\s*(\d+)[\.．]\s+\S', toc_area, re.MULTILINE)
-        if toc_entries:
-            required = max(int(n) for n in toc_entries)
-            # Only count top-level h2 headings (text starts with "N. " not "N-M. ")
-            actual = _count_top_level_sections(html)
-            return actual >= required
-
-    # --- Fallback: require all 6 mandated sections ---
-    checks = [
-        bool(re.search(r'市場規模|成長性|market.size', html, re.IGNORECASE)),
-        bool(re.search(r'競合|competitor|comparison', html, re.IGNORECASE)),
-        bool(re.search(r'トレンド|trend|動向', html, re.IGNORECASE)),
-        bool(re.search(r'参入障壁|リスク|risk|barrier', html, re.IGNORECASE)),
+    # Every one of the 6 mandated sections must appear in the body
+    required = [
+        r'市場規模|成長性|market.size',
+        r'グローバル|日本市場|global.*market|japan.*market',
+        r'競合|competitor|comparison',
+        r'トレンド|trend|動向|技術動向',
+        r'参入障壁|リスク|risk|barrier',
+        r'市場機会|成長ドライバー|opportunity|growth.driver',
     ]
-    return all(checks) and len(html) >= 5000
+    return all(bool(re.search(pat, html, re.IGNORECASE)) for pat in required)
 
 
 def _why_market(form_data, approved, previous_output, edit_instruction, deep_dive_request=None):
@@ -414,7 +422,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 - <!DOCTYPE html>より前に文字・説明・コードフェンスを出力すること
 
 ## 必須セクション（以下を全て含むこと・省略禁止）
-1. 市場規模と成長性（CSSバーチャート必須 — 下記テンプレート使用・ピクセル高さ指定）
+1. 市場規模と成長性（横型バーチャート必須 — 下記テンプレートをコピーして実データに変えること）
 2. グローバル市場 vs 日本市場の比較
 3. 競合サービス・プロダクト分析（下記の詳細フォーマット必須）
 4. 市場トレンド・技術動向
