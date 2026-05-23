@@ -395,7 +395,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 ## 必須セクション（以下を全て含むこと・省略禁止）
 1. 市場規模と成長性（CSSバーチャート必須 — 下記テンプレート使用・ピクセル高さ指定）
 2. グローバル市場 vs 日本市場の比較
-3. 競合サービス・プロダクト分析（比較表）
+3. 競合サービス・プロダクト分析（下記の詳細フォーマット必須）
 4. 市場トレンド・技術動向
 5. 参入障壁・リスク分析
 6. 市場機会・成長ドライバー
@@ -403,10 +403,29 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 ## バーチャート仕様（必ずこのテンプレートを使うこと）
 {CHART_INSTRUCTIONS}
 
+## セクション3「競合サービス・プロダクト分析」の必須フォーマット
+
+各競合サービス・製品ごとに以下を全て記載すること（省略禁止）:
+
+### 各競合エントリの構造（競合1社/1製品につき1ブロック）
+1. **サービス名 + 公式URL**（クリッカブルリンク）
+2. **強み**（箇条書き・具体的に）
+3. **弱み**（箇条書き・具体的に）
+4. **主要機能一覧**（表形式 or チェックリスト形式）
+5. **不足機能 / 追加提案候補**（自社が差別化できる機能・今後提供すべき機能）
+6. **外部連携システム一覧**（全ての連携先を列挙）:
+   - 連携先システム名
+   - 本体 → 連携先へ送信するデータ・情報
+   - 連携先 → 本体へ受け取るデータ・情報
+   - 連携の目的・概要
+
+競合エントリはグローバル競合・国内競合を分けてセクション化すること。
+URLが不明な場合は「（※公式サイト要確認）」と記載し、推測URLは使わないこと。
+
 ## 完了要件（最重要）
 - 上記6セクションを全て本文に出力すること（1つでも欠落したら不完全）
+- セクション3は全競合について詳細ブロックを記載すること
 - 全セクション出力後に </body></html> で閉じること
-- トークン不足の場合は各セクションの文章を短くして全6セクション完成を絶対優先する
 - 目次を作る場合は本文と一致させること
 
 {HTML_RULES}"""
@@ -438,12 +457,13 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
             for comp in competitors.replace("、", ",").replace("・", ",").split(",")[:4]:
                 comp = comp.strip()
                 if comp:
-                    queries.append(f"{comp} 機能 料金 シェア 評判")
+                    queries.append(f"{comp} 機能 料金 強み 弱み 評判 公式サイト")
+                    queries.append(f"{comp} 外部連携 API 連携システム 統合")
         queries.append(f"{industry} 成長ドライバー 市場機会")
         queries.append(f"{industry} グローバル 日本 市場比較")
 
         search_section = ""
-        for q in queries[:8]:
+        for q in queries[:10]:
             result = _search(q)
             search_section += f"\n### 検索: {q}\n{result}\n"
 
@@ -454,7 +474,8 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 {search_section}
 {_edit_block(previous_output, edit_instruction)}
 
-上記のデータをHTMLに変換してください。必ず<!DOCTYPE html>から始め、目次に記載した全セクションを本文に出力し、⚠補足などの注釈は一切含めないこと。"""
+上記のデータをHTMLに変換してください。必ず<!DOCTYPE html>から始め、目次に記載した全セクションを本文に出力し、⚠補足などの注釈は一切含めないこと。
+セクション3の競合分析は各社について「強み・弱み・機能一覧・不足機能・外部連携システム（双方向データフロー）・公式URL」を全て記載すること。"""
 
     return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000, complete_fn=_market_analysis_complete)
 
