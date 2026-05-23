@@ -85,12 +85,12 @@ def _get_tavily():
 
 def _search(query: str) -> str:
     try:
-        result = _get_tavily().search(query=query, max_results=3)
+        result = _get_tavily().search(query=query, max_results=5)
         lines = []
         for r in result.get("results", []):
             lines.append(f"タイトル: {r.get('title', '')}")
             lines.append(f"URL: {r.get('url', '')}")
-            lines.append(f"内容: {r.get('content', '')[:300]}")
+            lines.append(f"内容: {r.get('content', '')[:800]}")
             lines.append("---")
         return "\n".join(lines) if lines else "検索結果なし"
     except Exception as e:
@@ -174,10 +174,10 @@ def _run_simple(
     system: str,
     user_msg: str,
     model: str = "claude-haiku-4-5-20251001",
-    max_tokens: int = 8192,
+    max_tokens: int = 16000,
     complete_fn=None,
 ) -> str:
-    """Run Claude without tools. Auto-continues up to 2 times if output is truncated.
+    """Run Claude without tools. Auto-continues up to 4 times if output is truncated.
 
     Each continuation is a FRESH single-turn conversation to avoid the model getting
     confused by the original long research context in a multi-turn history.
@@ -191,8 +191,8 @@ def _run_simple(
     )
     accumulated = _strip(response.content[0].text)
 
-    # --- Continuation loop (up to 2 additional attempts) ---
-    for _ in range(2):
+    # --- Continuation loop (up to 4 additional attempts) ---
+    for _ in range(4):
         html_closed = bool(re.search(r'</html\s*>', accumulated, re.IGNORECASE))
         sections_complete = complete_fn is None or complete_fn(accumulated)
         if response.stop_reason != "max_tokens" and html_closed and sections_complete:
@@ -312,7 +312,7 @@ def _approved_context(approved: Dict[str, str]) -> str:
     parts = []
     for key, html in approved.items():
         label = SUB_PHASE_LABELS.get(key, key)
-        parts.append(f"### {label}\n{html[:1500]}")
+        parts.append(f"### {label}\n{html[:3000]}")
     return "\n\n".join(parts)
 
 
@@ -328,11 +328,13 @@ def _why_background(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたは優秀なITコンサルタントです。
 「背景と目的の明確化」のレポートHTMLを作成してください。
 
-含める内容（各項目は簡潔に）:
-- 事業課題と現状のペイン
-- As-Is / To-Be ギャップ分析
-- ステークホルダー分析（主要3者）
-- KGI / KPI の仮説設定
+含める内容:
+- 事業課題と現状のペイン（定量的な数値・具体的なエピソードを含む詳細分析）
+- As-Is / To-Be ギャップ分析（現状の問題点と理想状態を対比、ギャップの定量化）
+- ステークホルダー分析（全関係者・役割・影響度・期待・懸念点）
+- KGI / KPI の仮説設定（数値目標・測定方法・達成期限）
+- プロジェクト発足の背景と市場機会
+- 解決しないリスク（現状維持のコスト）
 
 {HTML_RULES}"""
     user = f"## プロジェクト情報\n{_form_summary(form_data)}{_edit_block(previous_output, edit_instruction)}\n\n背景と目的の明確化レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
@@ -352,14 +354,8 @@ def _count_top_level_sections(html: str) -> int:
 def _market_analysis_complete(html: str) -> bool:
     """Return True when all sections promised in the TOC are present in the body.
 
-    If no TOC is found, falls back to checking for the 3 essential sections.
+    If no TOC is found, falls back to checking for the essential sections.
     """
-    # Must have a visible bar chart — check for the blue bar color used in the template
-    has_chart = bool(re.search(r'rgba\(59,\s*130,\s*246', html))
-    if not has_chart:
-        has_chart = bool(re.search(r'<canvas\b', html, re.IGNORECASE))
-    if not has_chart:
-        return False
     # Must be properly closed
     if not re.search(r'</html\s*>', html, re.IGNORECASE):
         return False
@@ -431,16 +427,23 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
 
 上記のデータをもとに、既存HTMLの末尾に「追加深掘り調査結果」セクションを追記した完全なHTMLを返してください。必ず<!DOCTYPE html>から始め、⚠補足などの注釈は一切含めないこと。"""
     else:
-        queries = [f"{industry} 市場規模 成長率 2024"]
+        queries = [
+            f"{industry} 市場規模 成長率 2024 2025",
+            f"{industry} 市場規模 億円 予測 レポート",
+            f"{industry} 市場トレンド 最新 2024",
+            f"{industry} 参入障壁 課題 リスク",
+            f"{industry} 市場シェア 競合 比較",
+        ]
         if competitors:
-            for comp in competitors.replace("、", ",").replace("・", ",").split(",")[:3]:
+            for comp in competitors.replace("、", ",").replace("・", ",").split(",")[:4]:
                 comp = comp.strip()
                 if comp:
-                    queries.append(f"{comp} 機能 料金 評判")
-        queries.append(f"{industry} 市場トレンド 最新")
+                    queries.append(f"{comp} 機能 料金 シェア 評判")
+        queries.append(f"{industry} 成長ドライバー 市場機会")
+        queries.append(f"{industry} グローバル 日本 市場比較")
 
         search_section = ""
-        for q in queries[:4]:
+        for q in queries[:8]:
             result = _search(q)
             search_section += f"\n### 検索: {q}\n{result}\n"
 
@@ -460,11 +463,14 @@ def _why_business_model(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたは事業戦略・ビジネスモデル設計の専門家です。
 「ビジネスモデル・収益化」のレポートHTMLを作成してください。
 
-含める内容（各項目は簡潔に）:
-- 推奨マネタイズ手法（2〜3案比較）
-- KGI / KPI の仮説（MAU・CVR・LTV等、主要5指標）
-- 初期投資とランニングコストの概算
-- 損益分岐点の予測
+含める内容:
+- 推奨マネタイズ手法（複数案の詳細比較・選定理由・実装難易度）
+- KGI / KPI の仮説（MAU・CVR・LTV・ARPU・CAC等、目標値と根拠）
+- 収益モデルの詳細シミュレーション（3年間の収益予測）
+- 初期投資とランニングコストの概算（フェーズ別）
+- 損益分岐点の予測（シナリオ別：楽観・中立・悲観）
+- 競合のマネタイズ手法との比較
+- グロースハック戦略
 
 {HTML_RULES}"""
     ctx = _approved_context(approved)
@@ -479,14 +485,15 @@ def _who_persona(form_data, approved, previous_output, edit_instruction):
 ## ペルソナ数：3名のみ（超過禁止）
 
 ## 各ペルソナに含める内容（3名分）:
-- 基本プロフィール（氏名・年齢・職業・ITリテラシー）
-- ペインポイント 3項目
-- ゲインポイント 3項目
-- 代表的なコメント（1文）
+- 基本プロフィール（氏名・年齢・職業・ITリテラシー・一日の流れ）
+- ペインポイント（5項目以上、具体的なエピソードを含む）
+- ゲインポイント（5項目以上、実現したい状態を具体的に）
+- 代表的なコメント（実際に言いそうな言葉を2〜3文）
 
 ## 共通セクション（ペルソナの後に1回だけ）:
-- Pain/Gain分析マトリクス（表形式）
-- 主要利用シナリオ（2シナリオ・各3行以内）
+- Pain/Gain分析マトリクス（表形式、全ペルソナ横断）
+- 主要利用シナリオ（3シナリオ・各詳細に）
+- ユーザーインサイトのまとめ
 
 {HTML_RULES}"""
     ctx = _approved_context(approved)
@@ -498,10 +505,12 @@ def _who_value(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはプロダクトマネージャーです。
 「提供価値（バリュープロポジション）」のレポートHTMLを作成してください。
 
-含める内容（各項目は簡潔に）:
-- バリュープロポジションキャンバス（ペイン・ゲイン・プロダクト）
-- 競合との差別化ポイント（上位3点）
-- USP（ユニークセリングポイント）の言語化
+含める内容:
+- バリュープロポジションキャンバス（ペイン・ゲイン・プロダクト、各項目を詳細に）
+- 競合との差別化ポイント（5点以上、具体的な根拠を含む）
+- USP（ユニークセリングポイント）の言語化（複数のメッセージ案）
+- 提供価値の定量的インパクト試算
+- 顧客セグメント別の価値提案
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n提供価値レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
@@ -512,11 +521,13 @@ def _who_ux(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはUXデザイナーです。
 「UX設計・カスタマージャーニー」のレポートHTMLを作成してください。
 
-含める内容（各項目は簡潔に）:
-- カスタマージャーニーマップ（認知→検討→利用開始→継続→推奨の5フェーズ、表形式）
-- 主要タッチポイントと改善機会（上位5件）
-- Web/スマホ別UX方針（各3点以内）
-- オンボーディング設計の要点（3点以内）
+含める内容:
+- カスタマージャーニーマップ（認知→検討→利用開始→継続→推奨の5フェーズ、表形式・各フェーズの感情・思考・行動を記載）
+- 主要タッチポイントと改善機会（全タッチポイントを洗い出す）
+- Web/スマホ別UX方針（各詳細に）
+- オンボーディング設計（ステップ別の詳細設計）
+- ユーザーの離脱リスクと対策
+- アクセシビリティ対応方針
 
 {HTML_RULES}"""
     ctx = _approved_context(approved)
@@ -528,11 +539,13 @@ def _what_features(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはプロダクトマネージャーです。
 「機能洗い出しと優先順位付け」のレポートHTMLを作成してください。
 
-含める内容（各項目は簡潔に）:
-- 機能リスト（コア・周辺・将来に分類、各5件以内）
-- MoSCoW優先順位付け
-- MVP の定義
-- フェーズ別リリース計画（3フェーズ）
+含める内容:
+- 機能リスト（コア・周辺・将来に分類、各機能の説明・対象ユーザー・優先度を含む）
+- MoSCoW優先順位付け（全機能を分類し理由も記載）
+- MVP の定義（含む機能・含まない機能・判断理由）
+- フェーズ別リリース計画（3フェーズ・各フェーズの目標・期間・KPI）
+- 機能間の依存関係
+- 技術的実装難易度評価
 
 {HTML_RULES}"""
     ctx = _approved_context(approved)
@@ -544,11 +557,13 @@ def _what_ia(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはUI/UXデザイナーです。
 「情報設計とUIの方向性」のレポートHTMLを作成してください。
 
-含める内容（各項目は簡潔に）:
-- サイトマップ / 主要画面一覧（階層構造）
-- 主要画面遷移図（テキストベース）
-- UIトーン&マナー（カラー・フォント方針）
-- レスポンシブ対応方針
+含める内容:
+- サイトマップ / 主要画面一覧（全画面の階層構造）
+- 主要画面遷移図（テキストベース・各画面の役割説明）
+- UIトーン&マナー（カラーパレット・フォント・スペーシング方針・ブランドイメージ）
+- レスポンシブ対応方針（PC・タブレット・スマホの各対応）
+- コンポーネント設計方針
+- デザインシステムの概要
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n情報設計・UI方向性レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
@@ -559,11 +574,14 @@ def _what_nonfunc(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはシステムアーキテクトです。
 「非機能要件の方向性」のレポートHTMLを作成してください。
 
-含める内容（各項目は簡潔に、要点のみ）:
-- 性能要件（レスポンスタイム・同時接続数）
-- 可用性・セキュリティ要件
-- スケーラビリティ方針
-- 運用・保守方針
+含める内容:
+- 性能要件（レスポンスタイム・スループット・同時接続数・具体的な数値目標）
+- 可用性要件（SLA・RTO/RPO・冗長化方針）
+- セキュリティ要件（認証・認可・暗号化・脆弱性対策）
+- スケーラビリティ方針（水平/垂直スケーリング・ボトルネック分析）
+- 運用・保守方針（監視・ログ・アラート・障害対応フロー）
+- バックアップ・DR（災害復旧）方針
+- コンプライアンス・監査要件
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n非機能要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
@@ -574,11 +592,13 @@ def _how_platform(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはシステムアーキテクトです。
 「プラットフォームとアーキテクチャ」のレポートHTMLを作成してください。
 
-含める内容（各項目は簡潔に）:
-- 推奨プラットフォームと選定理由
-- システムアーキテクチャ概要（テキストベース）
-- 技術スタック候補（FE・BE・DB）
-- インフラ構成の方向性
+含める内容:
+- 推奨プラットフォームと選定理由（複数案の比較評価マトリクス）
+- システムアーキテクチャ概要（テキストベース図・各コンポーネントの役割）
+- 技術スタック候補（FE・BE・DB・インフラ・CI/CD・各選定理由）
+- インフラ構成の方向性（クラウドサービス比較・コスト試算）
+- APIアーキテクチャ方針（REST/GraphQL等）
+- マイクロサービスvsモノリス判断
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nプラットフォーム・アーキテクチャレポートHTMLを<!DOCTYPE html>から始めて作成してください。"
@@ -617,11 +637,13 @@ def _how_integration(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはシステムインテグレーションの専門家です。
 「外部連携とデータ」のレポートHTMLを作成してください。
 
-含める内容（各項目は簡潔に）:
-- 外部API・システム連携一覧（上位5件）
-- データフロー概要
-- 主要データモデル（エンティティ3〜5件）
-- API設計方針
+含める内容:
+- 外部API・システム連携一覧（全件・各サービスの役割・コスト・認証方式）
+- データフロー概要（入力→処理→出力の全経路）
+- 主要データモデル（エンティティと関係性・ER図相当）
+- API設計方針（エンドポイント設計例・バージョニング・エラーハンドリング）
+- データ品質・整合性管理方針
+- GDPR/個人情報保護法対応のデータ管理
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n外部連携・データ設計レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
@@ -632,11 +654,13 @@ def _project_schedule(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはプロジェクトマネージャーです。
 「スケジュールとマイルストーン」のレポートHTMLを作成してください。
 
-含める内容（各項目は簡潔に）:
-- フェーズ別スケジュール（要件定義→設計→開発→テスト→リリース）
-- 主要マイルストーンと成果物
-- フェーズ2・3のロードマップ概要
-- クリティカルパスとリスク
+含める内容:
+- フェーズ別スケジュール（要件定義→設計→開発→テスト→リリース・各フェーズの期間・タスク・担当）
+- 主要マイルストーンと成果物（具体的な完了条件付き）
+- フェーズ2・3の中長期ロードマップ（3年間の計画）
+- クリティカルパス分析（遅延リスクの高いタスクと対策）
+- リスク管理計画（リスク一覧・発生確率・影響度・対応策）
+- ガントチャート相当の視覚的スケジュール表示
 
 {HTML_RULES}"""
     ctx = _approved_context(approved)
@@ -648,11 +672,13 @@ def _project_budget(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたはITプロジェクトのコンサルタントです。
 「予算と体制」のレポートHTMLを作成してください。
 
-含める内容（各項目は簡潔に）:
-- 初期開発費の内訳概算
-- ランニングコスト概算
-- 開発体制案（役割・人数）
-- コスト最適化のポイント
+含める内容:
+- 初期開発費の内訳概算（工程別・役割別の詳細内訳、工数・単価・費用）
+- ランニングコスト概算（インフラ・ライセンス・人件費・月次/年次）
+- 開発体制案（役割・人数・スキル要件・採用/外注判断）
+- コスト最適化のポイント（クラウド・OSS活用・フェーズ分割）
+- ROI分析（投資回収期間・期待収益シナリオ）
+- 予算リスクと予備費の考え方
 
 {HTML_RULES}"""
     ctx = _approved_context(approved)
@@ -664,11 +690,13 @@ def _project_legal(form_data, approved, previous_output, edit_instruction):
     system = f"""あなたは法務・コンプライアンスの専門家です。
 「法務・コンプライアンス」のレポートHTMLを作成してください。
 
-含める内容（各項目は簡潔に）:
-- 関連法規チェックリスト（主要5〜7法）
-- 業界特有の規制・ガイドライン
-- プライバシーポリシー・利用規約の必要事項
-- 法的リスク優先度マトリクス
+含める内容:
+- 関連法規チェックリスト（全関連法規・各法規の対応要否・対応方法）
+- 業界特有の規制・ガイドライン・認証（取得要否と手順）
+- プライバシーポリシー・利用規約の必要事項（具体的な条文例）
+- 法的リスク優先度マトリクス（リスク別の影響度・発生確率・対策）
+- 知的財産権・ライセンス管理
+- 契約・SLA設計の要点
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n法務・コンプライアンスレポートHTMLを<!DOCTYPE html>から始めて作成してください。"
