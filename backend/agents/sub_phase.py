@@ -248,6 +248,88 @@ _CONTINUATION_SYSTEM = (
     "【必須】HTMLタグのみ出力。最後は必ず</body></html>で終了。途中で諦めることは絶対禁止。"
 )
 
+_SECTION_FRAGMENT_SYSTEM = """あなたはHTMLコンテンツ生成ツールです。
+指定されたセクションの本文HTMLのみを出力してください。
+
+【絶対禁止】
+- <!DOCTYPE>/<html>/<head>/<body>タグの出力
+- 謝罪文・説明文・注釈・⚠マーク・Markdown・コードフェンス
+- 空のdiv・canvas・min-height付きplaceholder container
+
+【バーチャートの出力方法（必須）】
+数値データがある箇所は必ず以下のHTMLテーブル形式でグラフとして表示すること:
+<table class="barchart-data" summary="グラフタイトル">
+  <tr><td>ラベル</td><td>数値のみ（単位なし）</td></tr>
+</table>
+
+【出力形式】
+- 指定された<h2>タグから始めること
+- Tailwind CSSクラスを使って見やすくレイアウトすること
+- 数値・事実・根拠を含め詳細に記述すること
+"""
+
+
+def _gen_market_fragment(user_content: str, max_tokens: int = 8000) -> str:
+    """Generate one HTML body section fragment for the market analysis report.
+
+    Uses a dedicated fresh API call per section so the AI can't skip or truncate
+    sections due to running out of context. If the section hits max_tokens,
+    one continuation is attempted automatically.
+    """
+    client = _get_anthropic()
+    response = _create_with_retry(
+        client,
+        model="claude-sonnet-4-6",
+        max_tokens=max_tokens,
+        system=_SECTION_FRAGMENT_SYSTEM,
+        messages=[{"role": "user", "content": user_content}],
+    )
+    text = response.content[0].text
+    print(f"[market_fragment] stop={response.stop_reason} len={len(text)}")
+
+    if response.stop_reason == "max_tokens":
+        cont_resp = _create_with_retry(
+            client,
+            model="claude-sonnet-4-6",
+            max_tokens=6000,
+            system=_CONTINUATION_SYSTEM,
+            messages=[{"role": "user", "content": (
+                "以下のHTMLが途中で切れています。末尾から続くHTMLのみを出力してください。"
+                "最後は開いているタグを閉じて終了すること。\n\n"
+                f"【末尾】\n{text[-1500:]}"
+            )}],
+        )
+        text += _strip_continuation(cont_resp.content[0].text)
+
+    return _strip_continuation(text)
+
+
+def _build_market_report_html(industry: str, *fragments: str) -> str:
+    """Assemble section fragments into a complete, well-formed HTML document."""
+    head = f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{industry} 市場分析レポート</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body {{ font-family:'Hiragino Kaku Gothic ProN','Meiryo',sans-serif; }}
+  h2 {{ border-bottom:2px solid #3b82f6; padding-bottom:.5rem; margin-top:2rem; }}
+  h3 {{ color:#334155; margin-top:1.25rem; }}
+  table:not(.barchart-data) {{ width:100%; border-collapse:collapse; margin:1rem 0; }}
+  table:not(.barchart-data) th,table:not(.barchart-data) td {{ padding:8px 12px; border:1px solid #e2e8f0; text-align:left; }}
+  table:not(.barchart-data) th {{ background:#f8fafc; font-weight:600; }}
+  table:not(.barchart-data) tr:nth-child(even) {{ background:#f9fafb; }}
+  ul,ol {{ padding-left:1.5rem; margin:.5rem 0; }}
+  li {{ margin-bottom:.25rem; }}
+</style>
+</head>
+<body class="max-w-5xl mx-auto p-8">
+"""
+    body = "\n\n".join(f.strip() for f in fragments if f.strip())
+    return head + body + "\n</body>\n</html>"
+
 
 def _run_simple(
     system: str,
@@ -553,117 +635,114 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
     industry = form_data.get("industry", "")
     competitors = form_data.get("competitors", "")
 
-    system = f"""あなたはHTMLレポート生成ツールです。入力されたデータをHTMLに変換して出力するだけです。
+    # --- Build search results (shared across all sections) ---
+    queries = [
+        f"{industry} 市場規模 成長率 2024 2025",
+        f"{industry} 市場規模 億円 予測 レポート",
+        f"{industry} 市場トレンド 最新 2024",
+        f"{industry} 参入障壁 課題 リスク",
+        f"{industry} 市場シェア 競合 比較",
+    ]
+    if competitors:
+        for comp in competitors.replace("、", ",").replace("・", ",").split(",")[:4]:
+            comp = comp.strip()
+            if comp:
+                queries.append(f"{comp} 機能 料金 強み 弱み 評判 公式サイト")
+                queries.append(f"{comp} 外部連携 API 連携システム 統合")
+    queries.append(f"{industry} 成長ドライバー 市場機会")
+    queries.append(f"{industry} グローバル 日本 市場比較")
 
-## 絶対禁止事項（違反禁止）
-- ⚠補足・事実確認注記・ファクトチェック・修正内容・「確認できない」などの注釈をHTMLに含めること
-- <!DOCTYPE html>より前に文字・説明・コードフェンスを出力すること
-- グラフのために空のdiv・canvas・min-height付きコンテナを生成すること（必ず下記テーブル形式を使うこと）
+    search_section = ""
+    for q in queries[:10]:
+        result = _search(q)
+        search_section += f"\n### 検索: {q}\n{result}\n"
 
-## 必須セクション（以下を全て含むこと・省略禁止）
-1. 市場規模と成長性（バーチャートマーカー必須 — 下記方式を使うこと）
-2. グローバル市場 vs 日本市場の比較
-3. 競合サービス・プロダクト分析（下記の詳細フォーマット必須）
-4. 市場トレンド・技術動向
-5. 参入障壁・リスク分析
-6. 市場機会・成長ドライバー
+    project_info = _form_summary(form_data)
 
-## バーチャートの出力方法（必読・必ず守ること）
-{CHART_INSTRUCTIONS}
-
-## セクション3「競合サービス・プロダクト分析」の必須フォーマット
-
-各競合サービス・製品ごとに以下を全て記載すること（省略禁止）:
-
-### 各競合エントリの構造（競合1社/1製品につき1ブロック）
-1. **サービス名 + 公式URL**（クリッカブルリンク）
-2. **強み**（箇条書き・具体的に）
-3. **弱み**（箇条書き・具体的に）
-4. **主要機能一覧**（表形式 or チェックリスト形式）
-5. **不足機能 / 追加提案候補**（自社が差別化できる機能・今後提供すべき機能）
-6. **外部連携システム一覧**（全ての連携先を列挙）:
-   - 連携先システム名
-   - 本体 → 連携先へ送信するデータ・情報
-   - 連携先 → 本体へ受け取るデータ・情報
-   - 連携の目的・概要
-
-競合エントリはグローバル競合・国内競合を分けてセクション化すること。
-URLが不明な場合は「（※公式サイト要確認）」と記載し、推測URLは使わないこと。
-
-## 完了要件（最重要）
-- 上記6セクションを全て本文に出力すること（1つでも欠落したら不完全）
-- セクション3は全競合について詳細ブロックを記載すること
-- 全セクション出力後に </body></html> で閉じること
-- 目次を作る場合は本文と一致させること
-
-{HTML_RULES}"""
-
+    # --- Deep dive (append to existing report) ---
     if deep_dive_request and previous_output:
-        search_results = _search(deep_dive_request)
-        user = f"""## プロジェクト情報
-{_form_summary(form_data)}
+        extra_results = _search(deep_dive_request)
+        system = f"""あなたはHTMLレポート生成ツールです。{HTML_RULES}"""
+        user = (
+            f"## プロジェクト情報\n{project_info}\n\n"
+            f"## 追加深掘り調査リクエスト\n{deep_dive_request}\n\n"
+            f"## 追加調査結果\n{extra_results}\n\n"
+            f"## 既存レポート（追記対象）\n{previous_output[:4000]}\n\n"
+            "既存HTMLの末尾に「追加深掘り調査結果」セクションを追記した完全なHTMLを返してください。"
+            "必ず<!DOCTYPE html>から始め、⚠補足などの注釈は一切含めないこと。"
+        )
+        return _inject_charts(_run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000))
 
-## 追加深掘り調査リクエスト
-{deep_dive_request}
+    # ── Multi-section generation ─────────────────────────────────────────────────
+    # Each section is a separate focused API call.
+    # This eliminates truncation and completion-check false-positives entirely.
 
-## 追加調査結果
-{search_results}
+    ctx = f"## プロジェクト情報\n{project_info}\n\n## Web調査結果\n{search_section}\n\n"
 
-## 既存レポート（追記対象）
-{previous_output[:4000]}
-
-上記のデータをもとに、既存HTMLの末尾に「追加深掘り調査結果」セクションを追記した完全なHTMLを返してください。必ず<!DOCTYPE html>から始め、⚠補足などの注釈は一切含めないこと。"""
-    else:
-        queries = [
-            f"{industry} 市場規模 成長率 2024 2025",
-            f"{industry} 市場規模 億円 予測 レポート",
-            f"{industry} 市場トレンド 最新 2024",
-            f"{industry} 参入障壁 課題 リスク",
-            f"{industry} 市場シェア 競合 比較",
-        ]
-        if competitors:
-            for comp in competitors.replace("、", ",").replace("・", ",").split(",")[:4]:
-                comp = comp.strip()
-                if comp:
-                    queries.append(f"{comp} 機能 料金 強み 弱み 評判 公式サイト")
-                    queries.append(f"{comp} 外部連携 API 連携システム 統合")
-        queries.append(f"{industry} 成長ドライバー 市場機会")
-        queries.append(f"{industry} グローバル 日本 市場比較")
-
-        search_section = ""
-        for q in queries[:10]:
-            result = _search(q)
-            search_section += f"\n### 検索: {q}\n{result}\n"
-
-        user = f"""## プロジェクト情報
-{_form_summary(form_data)}
-
-## Web調査結果
-{search_section}
-{_edit_block(previous_output, edit_instruction)}
-
-上記のデータをHTMLに変換してください。必ず<!DOCTYPE html>から始め、目次に記載した全セクションを本文に出力し、⚠補足などの注釈は一切含めないこと。
-セクション3の競合分析は各社について「強み・弱み・機能一覧・不足機能・外部連携システム（双方向データフロー）・公式URL」を全て記載すること。"""
-
-    continuation_hint = (
-        "【欠落セクションの要件】\n"
-        "以下の必須セクションをすべて出力すること:\n"
-        '1. 市場規模と成長性（バーチャートは<table class="barchart-data" summary="タイトル">形式で）\n'
-        "2. グローバル vs 日本市場比較\n"
-        "3. 競合サービス・プロダクト分析（各社: 強み・弱み・機能一覧・不足機能・外部連携（双方向）・公式URL）\n"
-        "4. 市場トレンド・技術動向\n"
-        "5. 参入障壁・リスク分析\n"
-        "6. 市場機会・成長ドライバー\n"
+    # Section 1: Market size + growth (with bar charts)
+    s1 = _gen_market_fragment(
+        ctx +
+        "## 指示\n"
+        "「1. 市場規模と成長性」セクションのHTMLを生成してください。\n"
+        "<h2>1. 市場規模と成長性</h2> から始めること。\n"
+        "含める内容:\n"
+        "- 国内・グローバル市場規模（直近3〜5年の推移と今後5年の予測）\n"
+        "- CAGR（年平均成長率）\n"
+        "- 主要成長セグメント\n"
+        "市場規模の推移・予測は必ず <table class=\"barchart-data\" summary=\"タイトル\"> 形式のバーチャートで表示すること。",
+        max_tokens=8000,
     )
-    result = _run_simple(
-        system, user,
-        model="claude-sonnet-4-6",
-        max_tokens=32000,
-        complete_fn=_market_analysis_complete,
-        continuation_hint=continuation_hint,
-        max_continuations=6,
+
+    # Section 2: Global vs Japan comparison
+    s2 = _gen_market_fragment(
+        ctx +
+        "## 指示\n"
+        "「2. グローバル市場 vs 日本市場の比較」セクションのHTMLを生成してください。\n"
+        "<h2>2. グローバル市場 vs 日本市場の比較</h2> から始めること。\n"
+        "含める内容:\n"
+        "- グローバル市場規模と日本市場規模の対比\n"
+        "- 地域別市場シェア（北米・欧州・アジア等）\n"
+        "- 日本市場の特性・課題・機会\n"
+        "比較データは <table class=\"barchart-data\" summary=\"タイトル\"> 形式のバーチャートで表示すること。",
+        max_tokens=6000,
     )
-    return _inject_charts(result)
+
+    # Section 3: Competitor analysis (most token-intensive)
+    comp_list = competitors or "（競合情報未記入）"
+    s3 = _gen_market_fragment(
+        ctx +
+        "## 指示\n"
+        "「3. 競合サービス・プロダクト分析」セクションのHTMLを生成してください。\n"
+        "<h2>3. 競合サービス・プロダクト分析</h2> から始めること。\n"
+        f"競合情報: {comp_list}\n\n"
+        "各競合サービス・製品ごとに以下を全て記載すること（省略禁止）:\n"
+        "1. サービス名 + 公式URL（クリッカブルリンク）\n"
+        "2. 強み（箇条書き・具体的に）\n"
+        "3. 弱み（箇条書き・具体的に）\n"
+        "4. 主要機能一覧（表形式）\n"
+        "5. 不足機能 / 追加提案候補\n"
+        "6. 外部連携システム一覧（連携先・本体→連携先のデータ・連携先→本体のデータ・目的）\n"
+        "グローバル競合と国内競合を分けてサブセクション化すること。",
+        max_tokens=16000,
+    )
+
+    # Sections 4-6: Trends, Risks, Opportunities
+    s456 = _gen_market_fragment(
+        ctx +
+        "## 指示\n"
+        "以下の3セクションのHTMLを全て生成してください（省略禁止）。\n\n"
+        "**セクション4**: <h2>4. 市場トレンド・技術動向</h2>\n"
+        "  - 最新市場トレンド・技術革新・DX・AI活用動向・将来展望を詳細に\n\n"
+        "**セクション5**: <h2>5. 参入障壁・リスク分析</h2>\n"
+        "  - 規制・技術的障壁・競合強度・市場リスクを詳細に\n\n"
+        "**セクション6**: <h2>6. 市場機会・成長ドライバー</h2>\n"
+        "  - 未開拓領域・成長機会・差別化ポイント・推奨アクションを詳細に\n\n"
+        "<h2>4. 市場トレンド・技術動向</h2> から始めること。3セクション全て出力すること。",
+        max_tokens=12000,
+    )
+
+    html = _build_market_report_html(industry, s1, s2, s3, s456)
+    return _inject_charts(html)
 
 
 def _why_business_model(form_data, approved, previous_output, edit_instruction):
