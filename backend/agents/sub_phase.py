@@ -8,39 +8,39 @@ from tavily import TavilyClient
 from backend.constants import SUB_PHASE_LABELS
 
 CHART_INSTRUCTIONS = """
-## CSSバーチャート（ピクセル高さ指定・JavaScriptなし・CDN不要）
+## CSSバーチャート（JavaScriptなし・CDN不要）
 
-【px高さの計算式】max = 最大値。バーのpx高さ = round(値 / max × 160)
-【例】値が[1200, 1680, 2100]の場合 max=2100 → px高さ: [91, 128, 160]
+【px高さの計算式】max = 最大値。各バーのheight = round(値 / max × 160)px
 
-【テンプレート（★を実データに必ず置き換えること）】
+【完成例 — このHTMLをそのままコピーして実データに書き換えること】
 
 <div style="margin:1.5rem 0;padding:16px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
-  <p style="font-size:13px;font-weight:600;color:#334155;margin:0 0 10px 0;">★グラフタイトル（単位）★</p>
+  <p style="font-size:13px;font-weight:600;color:#334155;margin:0 0 10px 0;">市場規模（億円）</p>
   <div style="display:flex;align-items:flex-end;gap:10px;">
     <div style="flex:1;text-align:center;">
-      <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:4px;">★値1★</div>
-      <div style="height:★px1★px;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
-      <div style="font-size:11px;color:#64748b;margin-top:4px;border-top:2px solid #cbd5e1;padding-top:2px;">★ラベル1★</div>
+      <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:4px;">1,200億</div>
+      <div style="height:91px;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px;border-top:2px solid #cbd5e1;padding-top:2px;">2022年</div>
     </div>
     <div style="flex:1;text-align:center;">
-      <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:4px;">★値2★</div>
-      <div style="height:★px2★px;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
-      <div style="font-size:11px;color:#64748b;margin-top:4px;border-top:2px solid #cbd5e1;padding-top:2px;">★ラベル2★</div>
+      <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:4px;">1,680億</div>
+      <div style="height:128px;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px;border-top:2px solid #cbd5e1;padding-top:2px;">2023年</div>
     </div>
     <div style="flex:1;text-align:center;">
-      <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:4px;">★値3★</div>
-      <div style="height:★px3★px;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
-      <div style="font-size:11px;color:#64748b;margin-top:4px;border-top:2px solid #cbd5e1;padding-top:2px;">★ラベル3★</div>
+      <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:4px;">2,100億</div>
+      <div style="height:160px;background:rgba(59,130,246,0.75);border-radius:3px 3px 0 0;min-height:4px;"></div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px;border-top:2px solid #cbd5e1;padding-top:2px;">2024年</div>
     </div>
   </div>
 </div>
 
-【バーが4本以上の場合】上記の <div style="flex:1;..."> ... </div> を増やすだけ
-【注意事項】
-- ★マークは必ず実データに置き換えること（★が残っていたら不完全）
-- heightは必ず計算したpx値（例: height:134px）— height:0px・height:auto・height:N%は不可
-- JavaScriptもCDNも一切不要
+【書き換え手順】
+1. 表示値（1,200億, 1,680億, 2,100億）を実データの値に変える
+2. heightのpx値（91px, 128px, 160px）を round(値/max×160) で計算した値に変える
+3. 軸ラベル（2022年 等）を実際の期間・カテゴリ名に変える
+4. グラフタイトル（市場規模（億円））を変える
+5. バーが4本以上必要な場合は <div style="flex:1;...">...</div> ブロックをそのまま増やす
 """
 
 HTML_RULES = """
@@ -198,11 +198,25 @@ def _run_simple(
         if response.stop_reason != "max_tokens" and html_closed and sections_complete:
             break
 
-        # Fresh single-turn: provide only the tail as context — no original research noise
-        tail = accumulated[-1500:]
-        cont_messages = [{
-            "role": "user",
-            "content": (
+        if html_closed and not sections_complete:
+            # Premature close: AI ended the document but required sections are missing.
+            # Strip closing tags from the tail so the continuation AI can append.
+            base_open = re.sub(r'\s*</body>\s*</html>\s*$', '', accumulated.rstrip(), flags=re.IGNORECASE).rstrip()
+            tail = base_open[-2000:]
+            cont_content = (
+                "以下のHTMLは途中で閉じられており、必須セクションが欠落しています。"
+                "末尾の</body></html>を取り除いた状態から、欠落セクションのHTMLを追記してください。\n\n"
+                f"【現在の末尾（閉じタグ除外）】\n{tail}\n\n"
+                "【指示】\n"
+                "- 不足しているセクションのHTMLのみ出力（冒頭の重複禁止）\n"
+                "- <!DOCTYPE>/<html>/<head>/<body>タグは出力不要\n"
+                "- 謝罪文・説明文・Markdownは絶対不要\n"
+                "- 全不足セクションを出力後、必ず</body></html>で終了"
+            )
+        else:
+            # Truly truncated mid-content — continue from the cut-off point
+            tail = accumulated[-1500:]
+            cont_content = (
                 "以下のHTMLが途中で切れています。末尾の直後から続くHTMLコードのみを出力してください。\n\n"
                 f"【現在の末尾】\n{tail}\n\n"
                 "【絶対ルール】\n"
@@ -212,12 +226,14 @@ def _run_simple(
                 "- 残りの全セクションを省略せず完全に出力すること\n"
                 "- 最後は必ず</body></html>で終了"
             )
-        }]
+
+        cont_messages = [{"role": "user", "content": cont_content}]
         response = _create_with_retry(
             client, model=model, max_tokens=max_tokens,
             system=_CONTINUATION_SYSTEM, messages=cont_messages,
         )
         chunk = response.content[0].text
+
         # Detect full document restart: DOCTYPE or <html> near the top of the chunk
         chunk_head = chunk[:600]
         is_restart = bool(
@@ -226,17 +242,22 @@ def _run_simple(
         )
         if is_restart:
             new_doc = _strip(chunk)
-            if new_doc:
-                accumulated = new_doc
+            # Only use restart if it's a complete, better document
+            if new_doc and re.search(r'</html\s*>', new_doc, re.IGNORECASE):
+                new_complete = complete_fn is None or complete_fn(new_doc)
+                if new_complete:
+                    accumulated = new_doc
+                    break  # Complete restart — done
+            # Incomplete restart — discard, try again next iteration
         else:
             cont = _strip_continuation(chunk)
             if cont:
-                # Overlap guard: if cont's opening text already appears early in accumulated,
-                # the AI restarted without DOCTYPE — replace rather than append
+                # Overlap guard: duplicate content detection
                 cont_text_head = re.sub(r'<[^>]+>', '', cont[:300]).strip()
                 acc_text = re.sub(r'<[^>]+>', '', accumulated[:6000]).strip()
                 if len(cont_text_head) > 30 and cont_text_head[:80] in acc_text[:int(len(acc_text) * 0.7)]:
-                    accumulated = _strip(chunk) or accumulated
+                    # Looks like a body-only restart — discard
+                    pass
                 else:
                     base = re.sub(r'\s*</body>\s*</html>\s*$', '', accumulated.rstrip(), flags=re.IGNORECASE).rstrip()
                     accumulated = base + "\n" + cont
@@ -477,7 +498,7 @@ URLが不明な場合は「（※公式サイト要確認）」と記載し、�
 上記のデータをHTMLに変換してください。必ず<!DOCTYPE html>から始め、目次に記載した全セクションを本文に出力し、⚠補足などの注釈は一切含めないこと。
 セクション3の競合分析は各社について「強み・弱み・機能一覧・不足機能・外部連携システム（双方向データフロー）・公式URL」を全て記載すること。"""
 
-    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000, complete_fn=_market_analysis_complete)
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000, complete_fn=_market_analysis_complete)
 
 
 def _why_business_model(form_data, approved, previous_output, edit_instruction):
