@@ -8,52 +8,23 @@ from tavily import TavilyClient
 from backend.constants import SUB_PHASE_LABELS
 
 CHART_INSTRUCTIONS = """
-## 横型バーチャート（JavaScriptなし・CDN不要・確実に表示される）
+## バーチャートの出力方法（必須・HTMLを自分で書かないこと）
 
-【width%の計算式】max = 最大値。各バーのwidth = round(値 / max × 100)%
+グラフが必要な箇所に以下のHTMLコメントマーカーを挿入すること。
+サーバーが自動的に正確なチャートHTMLに変換するため、自分でHTMLを書く必要は一切ない。
 
-【完成例 — このHTMLをそのままコピーして実データに書き換えること】
+【書式】
+<!-- CHART: タイトル | ラベル1:数値1, ラベル2:数値2, ラベル3:数値3 -->
 
-<div style="margin:1.5rem 0;padding:16px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
-  <p style="font-size:13px;font-weight:600;color:#334155;margin:0 0 12px 0;">市場規模推移（億円）</p>
+【絶対ルール】
+- 数値は純粋な数字のみ（単位・カンマ不要。「1200」「2100」のように書く）
+- <!--と-->で正確に囲む（スペースは自由）
+- ラベル・タイトルは日本語可
 
-  <div style="margin-bottom:10px;">
-    <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-      <span style="font-size:12px;color:#64748b;">2022年</span>
-      <span style="font-size:12px;font-weight:700;color:#1e40af;">1,200億</span>
-    </div>
-    <div style="height:20px;background:#e2e8f0;border-radius:4px;">
-      <div style="height:20px;width:57%;background:#3b82f6;border-radius:4px;"></div>
-    </div>
-  </div>
-
-  <div style="margin-bottom:10px;">
-    <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-      <span style="font-size:12px;color:#64748b;">2023年</span>
-      <span style="font-size:12px;font-weight:700;color:#1e40af;">1,680億</span>
-    </div>
-    <div style="height:20px;background:#e2e8f0;border-radius:4px;">
-      <div style="height:20px;width:80%;background:#3b82f6;border-radius:4px;"></div>
-    </div>
-  </div>
-
-  <div style="margin-bottom:10px;">
-    <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-      <span style="font-size:12px;color:#64748b;">2024年</span>
-      <span style="font-size:12px;font-weight:700;color:#1e40af;">2,100億</span>
-    </div>
-    <div style="height:20px;background:#e2e8f0;border-radius:4px;">
-      <div style="height:20px;width:100%;background:#3b82f6;border-radius:4px;"></div>
-    </div>
-  </div>
-</div>
-
-【書き換え手順】
-1. 表示値（1,200億 等）を実データの値に変える
-2. widthの%値（57%, 80%, 100%）を round(値/max×100) で計算した値に変える
-3. 年ラベルを実際の期間・カテゴリ名に変える
-4. グラフタイトルを変える
-5. 行が4本以上ある場合は <div style="margin-bottom:10px;">...</div> ブロックを追加するだけ
+【使用例】
+<!-- CHART: 市場規模推移（億円） | 2022年:1200, 2023年:1680, 2024年:2100, 2025年:2500 -->
+<!-- CHART: 市場シェア（%） | 企業A:35, 企業B:28, 企業C:18, その他:19 -->
+<!-- CHART: 国内 vs グローバル（兆円） | 日本:0.8, 北米:4.2, 欧州:2.5, アジア:3.1 -->
 """
 
 HTML_RULES = """
@@ -108,6 +79,65 @@ def _search(query: str) -> str:
         return "\n".join(lines) if lines else "検索結果なし"
     except Exception as e:
         return f"検索エラー: {e}"
+
+
+def _inject_charts(html: str) -> str:
+    """Replace <!-- CHART: title | label:val, ... --> markers with horizontal bar chart HTML.
+
+    This runs server-side so chart rendering is 100% reliable regardless of what
+    HTML the AI generates.
+    """
+    def make_chart(m):
+        content = m.group(1).strip()
+        parts = content.split('|', 1)
+        title = parts[0].strip()
+        data_str = parts[1].strip() if len(parts) > 1 else ''
+
+        bars = []
+        for entry in data_str.split(','):
+            entry = entry.strip()
+            if not entry:
+                continue
+            colon_idx = entry.rfind(':')
+            if colon_idx == -1:
+                continue
+            label = entry[:colon_idx].strip()
+            val_raw = re.sub(r'[^\d.]', '', entry[colon_idx + 1:].strip())
+            try:
+                bars.append((label, float(val_raw)))
+            except ValueError:
+                pass
+
+        if not bars:
+            return m.group(0)
+
+        max_val = max(v for _, v in bars)
+        if max_val == 0:
+            return m.group(0)
+
+        bar_rows = []
+        for label, val in bars:
+            pct = max(2, round(val / max_val * 100))
+            display = f'{int(val):,}' if val == int(val) else f'{val:,.1f}'
+            bar_rows.append(
+                f'<div style="margin-bottom:10px;">'
+                f'<div style="display:flex;justify-content:space-between;margin-bottom:3px;">'
+                f'<span style="font-size:12px;color:#64748b;">{label}</span>'
+                f'<span style="font-size:12px;font-weight:700;color:#1e40af;">{display}</span>'
+                f'</div>'
+                f'<div style="height:20px;background:#e2e8f0;border-radius:4px;overflow:hidden;">'
+                f'<div style="height:20px;width:{pct}%;background:#3b82f6;border-radius:4px;"></div>'
+                f'</div></div>'
+            )
+
+        return (
+            '<div style="margin:1.5rem 0;padding:16px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">'
+            f'<p style="font-size:13px;font-weight:600;color:#334155;margin:0 0 12px 0;">{title}</p>'
+            + ''.join(bar_rows) +
+            '</div>'
+        )
+
+    return re.sub(r'<!--\s*CHART:\s*(.*?)\s*-->', make_chart, html, flags=re.DOTALL)
 
 
 def _create_with_retry(client, **kwargs):
@@ -189,8 +219,10 @@ def _run_simple(
     model: str = "claude-haiku-4-5-20251001",
     max_tokens: int = 16000,
     complete_fn=None,
+    continuation_hint: str = "",
+    max_continuations: int = 4,
 ) -> str:
-    """Run Claude without tools. Auto-continues up to 4 times if output is truncated.
+    """Run Claude without tools. Auto-continues up to max_continuations times if output is truncated.
 
     Each continuation is a FRESH single-turn conversation to avoid the model getting
     confused by the original long research context in a multi-turn history.
@@ -205,8 +237,12 @@ def _run_simple(
     accumulated = _strip(response.content[0].text)
     print(f"[run_simple] initial: stop={response.stop_reason} len={len(accumulated)} model={model}")
 
-    # --- Continuation loop (up to 4 additional attempts) ---
-    for attempt in range(4):
+    # Strip closing tags helper (makes </body> optional since AI sometimes omits it)
+    def _strip_close(html: str) -> str:
+        return re.sub(r'(?:\s*</body>)?\s*</html>\s*$', '', html.rstrip(), flags=re.IGNORECASE).rstrip()
+
+    # --- Continuation loop ---
+    for attempt in range(max_continuations):
         html_closed = bool(re.search(r'</html\s*>', accumulated, re.IGNORECASE))
         sections_complete = complete_fn is None or complete_fn(accumulated)
         print(f"[run_simple] attempt={attempt} closed={html_closed} complete={sections_complete} len={len(accumulated)}")
@@ -215,24 +251,25 @@ def _run_simple(
 
         if html_closed and not sections_complete:
             # Premature close: AI ended the document but required sections are missing.
-            # Strip closing tags from the tail so the continuation AI can append.
-            base_open = re.sub(r'\s*</body>\s*</html>\s*$', '', accumulated.rstrip(), flags=re.IGNORECASE).rstrip()
+            base_open = _strip_close(accumulated)
             tail = base_open[-2000:]
+            hint_block = f"\n{continuation_hint}\n" if continuation_hint else ""
             cont_content = (
-                "以下のHTMLは途中で閉じられており、必須セクションが欠落しています。"
+                f"以下のHTMLは途中で閉じられており、必須セクションが欠落しています。{hint_block}"
                 "末尾の</body></html>を取り除いた状態から、欠落セクションのHTMLを追記してください。\n\n"
                 f"【現在の末尾（閉じタグ除外）】\n{tail}\n\n"
                 "【指示】\n"
-                "- 不足しているセクションのHTMLのみ出力（冒頭の重複禁止）\n"
+                "- 欠落セクションのHTMLのみ出力（冒頭の重複禁止）\n"
                 "- <!DOCTYPE>/<html>/<head>/<body>タグは出力不要\n"
                 "- 謝罪文・説明文・Markdownは絶対不要\n"
-                "- 全不足セクションを出力後、必ず</body></html>で終了"
+                "- 全欠落セクションを出力後、必ず</body></html>で終了"
             )
         else:
             # Truly truncated mid-content — continue from the cut-off point
             tail = accumulated[-1500:]
+            hint_block = f"\n{continuation_hint}\n" if continuation_hint else ""
             cont_content = (
-                "以下のHTMLが途中で切れています。末尾の直後から続くHTMLコードのみを出力してください。\n\n"
+                f"以下のHTMLが途中で切れています。末尾の直後から続くHTMLコードのみを出力してください。{hint_block}\n\n"
                 f"【現在の末尾】\n{tail}\n\n"
                 "【絶対ルール】\n"
                 "- 上記末尾の直後から続くHTMLのみ出力（冒頭の重複は禁止）\n"
@@ -274,7 +311,7 @@ def _run_simple(
                     # Looks like a body-only restart — discard
                     pass
                 else:
-                    base = re.sub(r'\s*</body>\s*</html>\s*$', '', accumulated.rstrip(), flags=re.IGNORECASE).rstrip()
+                    base = _strip_close(accumulated)
                     accumulated = base + "\n" + cont
 
     # Final completeness check
@@ -287,7 +324,7 @@ def _run_simple(
 
 
 def _strip(text: str) -> str:
-    """Return just the HTML content, stripping preamble text, code fences, and ⚠ annotations."""
+    """Return just the HTML content, stripping preamble text, code fences, and AI annotations."""
     text = text.strip()
     # Find code fence in any format: ```html, ```, or ``` + newline + language line
     m = re.search(r'```[ \t]*\w*[ \t]*\n', text)
@@ -302,6 +339,13 @@ def _strip(text: str) -> str:
         text = text[m2.start():]
     # Strip ⚠ annotation leaf elements that escaped prompt filtering
     text = re.sub(r'<(p|div|span|li|td)\b[^>]*>[^<]*⚠[^<]*</\1>', '', text, flags=re.IGNORECASE)
+    # Strip AI meta-commentary elements: "修正内容：", "注記：", "補足：", etc.
+    text = re.sub(
+        r'<(p|div|span|li|td)\b[^>]*>[^<]*(修正内容|注記|補足|ファクトチェック)[：:][^<]*</\1>',
+        '', text, flags=re.IGNORECASE,
+    )
+    # Also strip loose markdown-style bold annotations that leak outside tags
+    text = re.sub(r'\*\*(修正内容|注記|補足)[：:].*?\*\*', '', text, flags=re.DOTALL)
     # Remove empty structural elements left by continuation artifacts
     text = re.sub(r'<(div|section|blockquote|aside)\b[^>]*>\s*</\1>', '', text, flags=re.IGNORECASE | re.DOTALL)
     return text.strip()
@@ -387,28 +431,45 @@ def _count_top_level_sections(html: str) -> int:
     return count
 
 
-def _market_analysis_complete(html: str) -> bool:
-    """Return True only when ALL 6 required section topics are present.
+def _missing_market_sections(accumulated: str) -> list[str]:
+    """Return list of section labels that have no h2/h3 heading yet."""
+    heading_matches = re.findall(r'<h[23]\b[^>]*>(.*?)</h[23]>', accumulated, re.IGNORECASE | re.DOTALL)
+    heading_text = ' '.join(re.sub(r'<[^>]+>', '', h) for h in heading_matches)
 
-    Deliberately ignores TOC: AI-generated TOCs may have fewer entries than
-    required (e.g. only 2) which previously caused this check to return True
-    for an incomplete document, suppressing continuation entirely.
+    sections = [
+        (r'市場規模|成長性', '1. 市場規模と成長性（横型バーチャート必須: <!-- CHART: ... --> マーカーを使うこと）'),
+        (r'グローバル|日本市場', '2. グローバル vs 日本市場比較'),
+        (r'競合', '3. 競合サービス・プロダクト分析（各社: 強み・弱み・機能一覧・不足機能・外部連携・公式URL）'),
+        (r'トレンド|技術動向|動向', '4. 市場トレンド・技術動向'),
+        (r'参入障壁|リスク', '5. 参入障壁・リスク分析'),
+        (r'市場機会|成長ドライバー', '6. 市場機会・成長ドライバー'),
+    ]
+    return [label for pat, label in sections if not re.search(pat, heading_text, re.IGNORECASE)]
+
+
+def _market_analysis_complete(html: str) -> bool:
+    """Return True only when ALL 6 required sections exist as actual h2/h3 headings.
+
+    Previous approach checked keyword presence anywhere in the HTML, which matched
+    TOC entries (e.g. '<li>3. 競合分析</li>') even when section 3 body was never
+    written. That caused a false-positive that suppressed continuation entirely.
+
+    This version checks h2/h3 headings only — TOC items are <a>/<li> tags, not headings.
     """
     if not re.search(r'</html\s*>', html, re.IGNORECASE):
+        print("[market_complete] INCOMPLETE: no </html>")
         return False
-    if len(html) < 8000:
+    if len(html) < 15000:
+        print(f"[market_complete] INCOMPLETE: too short ({len(html)})")
         return False
 
-    # Every one of the 6 mandated sections must appear in the body
-    required = [
-        r'市場規模|成長性|market.size',
-        r'グローバル|日本市場|global.*market|japan.*market',
-        r'競合|competitor|comparison',
-        r'トレンド|trend|動向|技術動向',
-        r'参入障壁|リスク|risk|barrier',
-        r'市場機会|成長ドライバー|opportunity|growth.driver',
-    ]
-    return all(bool(re.search(pat, html, re.IGNORECASE)) for pat in required)
+    missing = _missing_market_sections(html)
+    if missing:
+        print(f"[market_complete] INCOMPLETE: missing headings for: {missing}")
+        return False
+
+    print(f"[market_complete] COMPLETE: all 6 headings found, len={len(html)}")
+    return True
 
 
 def _why_market(form_data, approved, previous_output, edit_instruction, deep_dive_request=None):
@@ -418,18 +479,19 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
     system = f"""あなたはHTMLレポート生成ツールです。入力されたデータをHTMLに変換して出力するだけです。
 
 ## 絶対禁止事項（違反禁止）
-- ⚠補足・事実確認注記・ファクトチェック・「確認できない」などの注釈をHTMLに含めること
+- ⚠補足・事実確認注記・ファクトチェック・修正内容・「確認できない」などの注釈をHTMLに含めること
 - <!DOCTYPE html>より前に文字・説明・コードフェンスを出力すること
+- グラフのHTMLを自分で書くこと（必ず下記マーカー形式を使うこと）
 
 ## 必須セクション（以下を全て含むこと・省略禁止）
-1. 市場規模と成長性（横型バーチャート必須 — 下記テンプレートをコピーして実データに変えること）
+1. 市場規模と成長性（バーチャートマーカー必須 — 下記方式を使うこと）
 2. グローバル市場 vs 日本市場の比較
 3. 競合サービス・プロダクト分析（下記の詳細フォーマット必須）
 4. 市場トレンド・技術動向
 5. 参入障壁・リスク分析
 6. 市場機会・成長ドライバー
 
-## バーチャート仕様（必ずこのテンプレートを使うこと）
+## バーチャートの出力方法（必読・必ず守ること）
 {CHART_INSTRUCTIONS}
 
 ## セクション3「競合サービス・プロダクト分析」の必須フォーマット
@@ -506,7 +568,25 @@ URLが不明な場合は「（※公式サイト要確認）」と記載し、�
 上記のデータをHTMLに変換してください。必ず<!DOCTYPE html>から始め、目次に記載した全セクションを本文に出力し、⚠補足などの注釈は一切含めないこと。
 セクション3の競合分析は各社について「強み・弱み・機能一覧・不足機能・外部連携システム（双方向データフロー）・公式URL」を全て記載すること。"""
 
-    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000, complete_fn=_market_analysis_complete)
+    continuation_hint = (
+        "【欠落セクションの要件】\n"
+        "以下の必須セクションをすべて出力すること:\n"
+        "1. 市場規模と成長性（バーチャート: <!-- CHART: タイトル | ラベル:数値, ... --> マーカー必須）\n"
+        "2. グローバル vs 日本市場比較\n"
+        "3. 競合サービス・プロダクト分析（各社: 強み・弱み・機能一覧・不足機能・外部連携（双方向）・公式URL）\n"
+        "4. 市場トレンド・技術動向\n"
+        "5. 参入障壁・リスク分析\n"
+        "6. 市場機会・成長ドライバー\n"
+    )
+    result = _run_simple(
+        system, user,
+        model="claude-sonnet-4-6",
+        max_tokens=32000,
+        complete_fn=_market_analysis_complete,
+        continuation_hint=continuation_hint,
+        max_continuations=6,
+    )
+    return _inject_charts(result)
 
 
 def _why_business_model(form_data, approved, previous_output, edit_instruction):
