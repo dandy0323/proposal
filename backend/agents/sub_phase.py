@@ -141,7 +141,7 @@ def _inject_charts(html: str) -> str:
             except ValueError:
                 pass
         chart = _bars_to_html(bars, title)
-        return chart if chart else m.group(0)
+        return chart if chart else ''  # Remove empty barchart-data tables entirely
 
     html = re.sub(
         r'<table\b[^>]*class="barchart-data"[^>]*>.*?</table>',
@@ -169,9 +169,20 @@ def _inject_charts(html: str) -> str:
             except ValueError:
                 pass
         chart = _bars_to_html(bars, title)
-        return chart if chart else m.group(0)
+        return chart if chart else ''
 
     html = re.sub(r'<!--\s*CHART:\s*(.*?)\s*-->', convert_comment, html, flags=re.DOTALL)
+
+    # Remove AI-generated empty chart placeholder divs.
+    # AI often creates: <div style="...min-height:200px;..."> <!-- placeholder --> </div>
+    # These produce large blank white boxes. Remove any div with min-height that has
+    # no visible content (only HTML comments or whitespace inside).
+    html = re.sub(
+        r'<div\b[^>]*min-height[^>]*>\s*(?:<!--.*?-->\s*)*</div>',
+        '',
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
 
     return html
 
@@ -301,7 +312,19 @@ def _gen_market_fragment(user_content: str, max_tokens: int = 8000) -> str:
         )
         text += _strip_continuation(cont_resp.content[0].text)
 
-    return _strip_continuation(text)
+    # Clean the fragment:
+    # 1. Remove full HTML boilerplate (DOCTYPE/html/head/body start tags via _strip_continuation)
+    result = _strip_continuation(text)
+    # 2. Strip </body></html> from the END — _strip_continuation only strips opening tags,
+    #    not closing ones. Without this every fragment ends with </body></html>, causing
+    #    multiple body/html closing tags in the assembled report which browsers interpret
+    #    as separate documents — sections 2-6 appear "outside" the first document.
+    result = re.sub(r'(?:\s*</body>)?\s*</html>\s*$', '', result.rstrip(), flags=re.IGNORECASE).rstrip()
+    # 3. Strip any AI preamble text that appears before the first HTML tag
+    m_first = re.search(r'<[a-zA-Z]', result)
+    if m_first and m_first.start() > 0:
+        result = result[m_first.start():]
+    return result.strip()
 
 
 def _build_market_report_html(industry: str, *fragments: str) -> str:
