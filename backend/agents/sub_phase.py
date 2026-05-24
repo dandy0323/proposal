@@ -175,25 +175,42 @@ def _inject_charts(html: str) -> str:
 
     html = re.sub(r'<!--\s*CHART:\s*(.*?)\s*-->', convert_comment, html, flags=re.DOTALL)
 
-    # Remove canvas elements (AI sometimes generates these as chart placeholders)
+    # Remove inline <script> tags (those without src=) BEFORE placeholder cleanup.
+    # Chart.js/Plotly init code leaves behind empty height divs; removing scripts first
+    # lets the next step catch those divs.
+    # Scripts with src= (e.g. Tailwind CDN) are preserved.
+    html = re.sub(
+        r'<script\b(?![^>]*\bsrc\s*=)[^>]*>.*?</script>',
+        '',
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    # Remove canvas elements (self-closing or with explicit closing tag)
+    html = re.sub(r'<canvas\b[^>]*/>', '', html, flags=re.IGNORECASE)
     html = re.sub(r'<canvas\b[^>]*>.*?</canvas>', '', html, flags=re.IGNORECASE | re.DOTALL)
 
     # Remove empty AI-generated chart placeholder divs.
-    # Pattern: <div style="...min-height/height:Npx..."> containing only comments/whitespace.
-    # These produce large blank white boxes in the rendered output.
-    html = re.sub(
-        r'<div\b[^>]*(?:min-height|height)\s*:\s*\d+[^>]*>\s*(?:<!--.*?-->\s*)*</div>',
-        '',
-        html,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    # Also remove empty divs with chart-related class names
-    html = re.sub(
-        r'<div\b[^>]*class="[^"]*chart[^"]*"[^>]*>\s*(?:<!--.*?-->\s*)*</div>',
-        '',
-        html,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
+    # After script/canvas removal the divs are left empty — these produce blank white boxes.
+    # Run multiple passes to handle nested empty containers.
+    for _ in range(4):
+        before = html
+        # Div with explicit height/min-height containing only whitespace or comments
+        html = re.sub(
+            r'<div\b[^>]*(?:min-height|height)\s*:\s*\d+[^>]*>\s*(?:<!--.*?-->\s*)*</div>',
+            '',
+            html,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        # Div with chart-related class/id names that are now empty
+        html = re.sub(
+            r'<div\b[^>]*(?:class|id)="[^"]*chart[^"]*"[^>]*>\s*(?:<!--.*?-->\s*)*</div>',
+            '',
+            html,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if html == before:
+            break
 
     return html
 
@@ -273,16 +290,20 @@ _CONTINUATION_SYSTEM = (
 _SECTION_FRAGMENT_SYSTEM = """あなたはHTMLコンテンツ生成ツールです。
 指定されたセクションの本文HTMLのみを出力してください。
 
-【絶対禁止】
-- <!DOCTYPE>/<html>/<head>/<body>タグの出力
+【絶対禁止 — 違反すると出力が破壊される】
+- <!DOCTYPE>/<html>/<head>/<body>/<script>タグの出力（<script>タグは完全禁止）
 - 謝罪文・説明文・注釈・⚠マーク・Markdown・コードフェンス
-- 空のdiv・canvas・min-height付きplaceholder container
+- canvas要素・SVGグラフ・Chart.js・Plotly・D3.js・any JavaScriptライブラリ
+- 空のdiv・min-height/height付きの空コンテナ（chart placeholder禁止）
+- JavaScriptコードを1行も書かないこと
 
-【バーチャートの出力方法（必須）】
-数値データがある箇所は必ず以下のHTMLテーブル形式でグラフとして表示すること:
+【グラフ・チャートの出力方法（唯一の正しい方法）】
+数値データがある箇所は必ず以下のHTMLテーブル形式のみで表示すること。
+サーバーが自動的に横棒グラフに変換する。
 <table class="barchart-data" summary="グラフタイトル">
   <tr><td>ラベル</td><td>数値のみ（単位なし）</td></tr>
 </table>
+この形式以外でグラフを表示しようとしないこと。divもcanvasもscriptも不要。
 
 【出力形式】
 - 指定された<h2>タグから始めること
@@ -779,29 +800,57 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         max_tokens=16000,
     )
 
-    # Sections 4-6: Trends, Risks, Opportunities
-    s456 = _gen_market_fragment(
+    # Sections 4, 5, 6: each as a SEPARATE API call so no section is starved of tokens.
+    # (A single call for all 3 reliably ran out of tokens after section 4.)
+    s4 = _gen_market_fragment(
         ctx +
         "## 指示\n"
-        "以下の3セクションのHTMLを全て生成してください（省略禁止）。\n\n"
-        "**セクション4**: <h2>4. 市場トレンド・技術動向</h2>\n"
-        "  - 最新市場トレンド・技術革新・DX・AI活用動向・将来展望を詳細に\n\n"
-        "**セクション5**: <h2>5. 参入障壁・リスク分析</h2>\n"
-        "  - 規制・技術的障壁・競合強度・市場リスクを詳細に\n\n"
-        "**セクション6**: <h2>6. 市場機会・成長ドライバー</h2>\n"
-        "  - 未開拓領域・成長機会・差別化ポイント・推奨アクションを詳細に\n\n"
-        "<h2>4. 市場トレンド・技術動向</h2> から始めること。3セクション全て出力すること。",
-        max_tokens=12000,
+        "「4. 市場トレンド・技術動向」セクションのHTMLのみを生成してください。\n"
+        "<h2>4. 市場トレンド・技術動向</h2> から始めること。\n"
+        "含める内容:\n"
+        "- 最新市場トレンド（直近2〜3年の動向）\n"
+        "- 技術革新・DX・AI活用動向（具体的な技術名・導入事例）\n"
+        "- 将来展望（3〜5年後の予測）\n"
+        "数値データがあれば <table class=\"barchart-data\" summary=\"タイトル\"> 形式で表示すること。",
+        max_tokens=8000,
+    )
+
+    s5 = _gen_market_fragment(
+        ctx +
+        "## 指示\n"
+        "「5. 参入障壁・リスク分析」セクションのHTMLのみを生成してください。\n"
+        "<h2>5. 参入障壁・リスク分析</h2> から始めること。\n"
+        "含める内容:\n"
+        "- 規制・法的障壁（具体的な法規制名）\n"
+        "- 技術的障壁（開発難易度・必要技術）\n"
+        "- 競合強度・市場リスク（定量的に）\n"
+        "- リスクマトリクス（発生確率×影響度）\n",
+        max_tokens=8000,
+    )
+
+    s6 = _gen_market_fragment(
+        ctx +
+        "## 指示\n"
+        "「6. 市場機会・成長ドライバー」セクションのHTMLのみを生成してください。\n"
+        "<h2>6. 市場機会・成長ドライバー</h2> から始めること。\n"
+        "含める内容:\n"
+        "- 未開拓領域・成長機会（具体的なニッチ市場・顧客セグメント）\n"
+        "- 成長ドライバー（技術・規制・社会的要因）\n"
+        "- 差別化ポイント・推奨アクション\n"
+        "数値データがあれば <table class=\"barchart-data\" summary=\"タイトル\"> 形式で表示すること。",
+        max_tokens=8000,
     )
 
     print(f"[why_market] s1  len={len(s1)}  preview={s1[:120]!r}")
     print(f"[why_market] s2  len={len(s2)}  preview={s2[:120]!r}")
     print(f"[why_market] s3  len={len(s3)}  preview={s3[:120]!r}")
-    print(f"[why_market] s456 len={len(s456)} preview={s456[:120]!r}")
+    print(f"[why_market] s4  len={len(s4)}  preview={s4[:120]!r}")
+    print(f"[why_market] s5  len={len(s5)}  preview={s5[:120]!r}")
+    print(f"[why_market] s6  len={len(s6)}  preview={s6[:120]!r}")
 
-    html = _build_market_report_html(industry, s1, s2, s3, s456)
+    html = _build_market_report_html(industry, s1, s2, s3, s4, s5, s6)
     result = _inject_charts(html)
-    print(f"[why_market] final html len={len(result)}")
+    print(f"[why_market] final html len={len(result)} h2_count={result.count('<h2')}")
 
     import pathlib
     pathlib.Path('/tmp/debug_market.html').write_text(result)
