@@ -157,6 +157,7 @@ def _inject_charts(html: str) -> str:
                 bars.append((label, float(val_raw)))
             except ValueError:
                 pass
+        print(f"[inject_charts] barchart-data title={title!r} bars={bars}")
         chart = _bars_to_html(bars, title)
         return chart if chart else ''  # Remove empty barchart-data tables entirely
 
@@ -873,20 +874,22 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         max_tokens=16000,
     )
 
-    print(f"[why_market] s1  len={len(s1)}  preview={s1[:120]!r}")
-    print(f"[why_market] s2  len={len(s2)}  preview={s2[:120]!r}")
-    print(f"[why_market] s3  len={len(s3)}  preview={s3[:120]!r}")
-    print(f"[why_market] s4  len={len(s4)}  preview={s4[:120]!r}")
-    print(f"[why_market] s5  len={len(s5)}  preview={s5[:120]!r}")
-    print(f"[why_market] s6  len={len(s6)}  preview={s6[:120]!r}")
+    import pathlib
+    for i, (label, frag) in enumerate(zip(['s1','s2','s3','s4','s5','s6'], [s1,s2,s3,s4,s5,s6]), 1):
+        barchart_count = frag.count('class="barchart-data"') + frag.count("class='barchart-data'")
+        print(f"[why_market] {label} len={len(frag)} barchart_tables={barchart_count} preview={frag[:200]!r}")
+        pathlib.Path(f'/tmp/debug_{label}.html').write_text(frag)
 
     html = _build_market_report_html(industry, s1, s2, s3, s4, s5, s6)
-    result = _inject_charts(html)
-    print(f"[why_market] final html len={len(result)} h2_count={result.count('<h2')}")
+    pathlib.Path('/tmp/debug_market_raw.html').write_text(html)
+    print(f"[why_market] raw html saved to /tmp/debug_market_raw.html (before chart injection)")
 
-    import pathlib
+    result = _inject_charts(html)
+    barchart_in_result = result.count('linear-gradient')
+    print(f"[why_market] final html len={len(result)} h2_count={result.count('<h2')} bar_count={barchart_in_result}")
+
     pathlib.Path('/tmp/debug_market.html').write_text(result)
-    print("[why_market] debug HTML saved to /tmp/debug_market.html")
+    print("[why_market] final HTML saved to /tmp/debug_market.html")
 
     return result
 

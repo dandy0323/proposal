@@ -1,5 +1,7 @@
 from typing import Optional
+from pathlib import Path
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from backend import database as db
 from backend.agents import factcheck, proposal_outline, mockup
@@ -279,3 +281,34 @@ def _combine_sub_phase_html(approved: dict) -> str:
             html = approved[key]
             parts.append(f'<section class="sub-phase"><h2>{label}</h2>{html}</section>')
     return "\n\n".join(parts)
+
+
+# ── Debug endpoints ────────────────────────────────────────────────────────────
+
+@router.get("/debug/market-html", response_class=HTMLResponse)
+def debug_market_html(raw: bool = False):
+    """Return the last generated why_market HTML for debugging."""
+    path = Path('/tmp/debug_market_raw.html') if raw else Path('/tmp/debug_market.html')
+    if not path.exists():
+        return HTMLResponse("<p>No debug file found. Run why_market first.</p>")
+    return HTMLResponse(path.read_text())
+
+
+@router.get("/debug/market-sections")
+def debug_market_sections():
+    """Return metadata about the last generated why_market sections."""
+    import re as _re
+    info = {}
+    for key in ['s1', 's2', 's3', 's4', 's5', 's6']:
+        p = Path(f'/tmp/debug_{key}.html')
+        if p.exists():
+            content = p.read_text()
+            info[key] = {
+                "len": len(content),
+                "barchart_tables": content.count('class="barchart-data"') + content.count("class='barchart-data'"),
+                "h2_tags": len(_re.findall(r'<h2', content, _re.I)),
+                "preview": content[:300],
+            }
+        else:
+            info[key] = None
+    return JSONResponse(info)
