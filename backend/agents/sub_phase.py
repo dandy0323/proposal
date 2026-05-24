@@ -47,6 +47,13 @@ HTML_RULES = """
 - 推定値は「※推定」と明記する
 - ⚠補足・事実確認注記・ファクトチェックコメント・「確認できない」「推測です」などの注釈は絶対に出力しない（違反禁止）
 
+## グラフ・チャートの出力方法（重要）
+- <canvas>・Chart.js・Plotly・D3.js等のJSライブラリは使用禁止（サーバーが自動削除するため空白になる）
+- 数値データを棒グラフで表示したい場合は必ず以下の形式を使うこと。サーバーが自動で横棒グラフに変換する:
+  <table class="barchart-data" summary="グラフタイトル">
+    <tr><td>ラベル</td><td>数値のみ（単位なし）</td></tr>
+  </table>
+
 ## 出典の記載ルール
 - 具体的な数値・統計・事実を記載する際は、その直後に出典URLをインラインでリンク表示する
   形式: <a href="URL" target="_blank" class="text-xs text-blue-500 underline ml-1">出典</a>
@@ -131,7 +138,7 @@ def _bars_to_html(bars: list, title: str) -> str:
         '<div style="margin:1.5rem 0;padding:16px;background:#f8fafc;'
         'border-radius:8px;border:1px solid #e2e8f0;overflow:hidden;">'
         f'<table style="width:100%;border-collapse:collapse;">'
-        f'<tbody>{title_row}{""​.join(rows)}</tbody>'
+        f'<tbody>{title_row}{""join(rows)}</tbody>'
         f'</table></div>'
     )
 
@@ -146,7 +153,7 @@ def _inject_charts(html: str) -> str:
     # Format 1: <table class="barchart-data">
     def convert_table(m):
         # Handle both single and double quotes for summary attribute
-        summary_match = re.search(r'summary=["\'​]([^"\'​]*)["\'​]', m.group(0))
+        summary_match = re.search(r'summary=["\'](.*?)["\']', m.group(0))
         title = summary_match.group(1) if summary_match else ''
         rows = re.findall(r'<tr>\s*<td[^>]*>(.*?)</td>\s*<td[^>]*>(.*?)</td>\s*</tr>', m.group(0), re.IGNORECASE | re.DOTALL)
         bars = []
@@ -163,7 +170,7 @@ def _inject_charts(html: str) -> str:
 
     # Match class="barchart-data" with either quote style and optional extra classes
     html = re.sub(
-        r'<table\b[^>]*class=["\'​][^"\'​]*barchart-data[^"\'​]*["\'​][^>]*>.*?</table>',
+        r'<table\b[^>]*class=["\''][^"\']*barchart-data[^"\']*["\''][^>]*>.*?</table>',
         convert_table,
         html,
         flags=re.IGNORECASE | re.DOTALL,
@@ -221,7 +228,7 @@ def _inject_charts(html: str) -> str:
         )
         # Div with chart-related class/id names that are now empty
         html = re.sub(
-            r'<div\b[^>]*(?:class|id)=["\'​][^"\'​]*chart[^"\'​]*["\'​][^>]*>\s*(?:<!--.*?-->\s*)*</div>',
+            r'<div\b[^>]*(?:class|id)=["\''][^"\']*chart[^"\']*["\''][^>]*>\s*(?:<!--.*?-->\s*)*</div>',
             '',
             html,
             flags=re.IGNORECASE | re.DOTALL,
@@ -1217,4 +1224,4 @@ def run(
 
     if sub_phase_key == "why_market":
         return handler(form_data, approved_outputs, previous_output, edit_instruction, deep_dive_request)
-    return handler(form_data, approved_outputs, previous_output, edit_instruction)
+    return _inject_charts(handler(form_data, approved_outputs, previous_output, edit_instruction))
