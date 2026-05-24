@@ -432,7 +432,7 @@ def _build_market_report_html(industry: str, *fragments: str) -> str:
 def _run_simple(
     system: str,
     user_msg: str,
-    model: str = "claude-haiku-4-5-20251001",
+    model: str = "claude-sonnet-4-6",
     max_tokens: int = 16000,
     complete_fn=None,
     continuation_hint: str = "",
@@ -1074,6 +1074,296 @@ def _project_legal(form_data, approved, previous_output, edit_instruction):
     return _run_simple(system, user)
 
 
+# ── Requirements Definition handlers ─────────────────────────────────────────
+
+def _req_business(form_data, approved, previous_output, edit_instruction):
+    system = f"""あなたはITプロジェクトの要件定義専門コンサルタントです。
+「事業・業務要件」の要件定義レポートHTMLを作成してください。
+
+含める内容:
+- 目的・ゴールの再確認（KGI/KPI確定・成功/失敗判断基準）
+- 現行業務の整理（現在のフロー・使用ツール・課題：二重入力/承認待ち/属人化/転記ミス等）
+- 新業務フローの定義（To-Be・人とシステムの切り分け・自動化範囲・承認フロー）
+- 業務ルールの定義（申込条件・予約条件・ポイント付与・会員ランク・通知・承認条件等）
+- 業務範囲・対象範囲の確定（対象店舗/部署/ユーザー/商品・対象外業務・STEP1/2の切り分け）
+
+{HTML_RULES}"""
+    ctx = _approved_context(approved)
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n事業・業務要件の要件定義レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000)
+
+
+def _req_stakeholders(form_data, approved, previous_output, edit_instruction):
+    system = f"""あなたはITプロジェクトの要件定義専門コンサルタントです。
+「ステークホルダー・利用者要件」の要件定義レポートHTMLを作成してください。
+
+含める内容:
+- 利用者種別の整理（一般/会員/非会員ユーザー・店舗スタッフ・本部担当者・管理者・CS担当者・外部パートナー等）
+- 権限・ロールの定義（閲覧/登録/編集/削除/承認できる情報と操作・店舗別/部署別/全社権限差）
+- ユーザー行動の具体化（初回/通常/再訪時・離脱/問い合わせ発生ポイント・スマホ/PC/利用シーン別差異）
+- ユーザー課題の再整理（操作難解・入力負荷・情報発見困難・通知過多・管理者の確認工数等）
+- 利用環境の定義（対象端末/OS/ブラウザ・ネットワーク環境・高齢者/低ITリテラシー配慮・アクセシビリティ）
+
+{HTML_RULES}"""
+    ctx = _approved_context(approved)
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nステークホルダー・利用者要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000)
+
+
+def _req_functional(form_data, approved, previous_output, edit_instruction):
+    system = f"""あなたはITプロジェクトの要件定義専門コンサルタントです。
+「機能要件」の要件定義レポートHTMLを作成してください。
+
+含める内容:
+- 機能一覧（ユーザー向け/管理者向け/バッチ/通知/外部連携/集計分析機能）
+- 機能ごとの詳細定義（機能名・概要・利用者・利用シーン・入力/表示項目・処理内容・正常系/異常系・完了条件）
+- 優先順位付け（Must/Should/Could/Won't・MVP定義・2027年以降追加候補）
+- 画面単位の機能整理（ログイン/会員登録/マイページ/商品一覧/予約/決済/管理画面等の機能）
+- CRUD整理（Create/Read/Update/Delete・論理/物理削除・履歴保持要否）
+- 検索・絞り込み・並び替え要件
+- 通知・配信要件（メール/プッシュ/SMS/LINE/アプリ内通知・タイミング・対象者・配信予約・停止）
+
+{HTML_RULES}"""
+    ctx = _approved_context(approved)
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n機能要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000)
+
+
+def _req_ui_ux(form_data, approved, previous_output, edit_instruction):
+    system = f"""あなたはUI/UXデザイナー兼要件定義コンサルタントです。
+「画面・UI/UX要件」の要件定義レポートHTMLを作成してください。
+
+含める内容:
+- 画面一覧（ユーザー画面/管理画面/スタッフ画面/エラー画面/通知テンプレート/モーダル一覧）
+- 画面遷移の定義（初回アクセス〜完了・ログイン前後・会員登録後・エラー時/ブラウザバック/セッション切れ時の挙動）
+- ワイヤーフレーム（各画面構成・ヘッダー/フッター/メニュー・ボタン/フォーム配置・スマホ画面での見やすさ）
+- 入力フォーム要件（項目・必須/任意・入力形式・文字数制限・バリデーション・エラーメッセージ・確認画面要否）
+- UIルールの定義（ボタン文言・ステータス表示・色/アイコン使用・ローディング/トースト/モーダル・データなし時表示）
+- UX上の重要ポイント（最短操作・入力項目数・次の行動導線・管理者の情報到達・スマホ片手操作・ショートカット）
+
+{HTML_RULES}"""
+    ctx = _approved_context(approved)
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n画面・UI/UX要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000)
+
+
+def _req_data(form_data, approved, previous_output, edit_instruction):
+    system = f"""あなたはデータアーキテクト兼要件定義コンサルタントです。
+「データ・情報設計要件」の要件定義レポートHTMLを作成してください。
+
+含める内容:
+- 管理対象データの洗い出し（ユーザー/会員/商品/店舗/予約/注文/決済/ポイント/クーポン/問い合わせ/ログ/権限情報）
+- データ項目定義（項目名・型・桁数・必須/任意・初期値・一意制約・暗号化/マスキング要否・保存期間・削除条件）
+- データ関係の整理（ユーザー⇔予約・会員⇔ポイント・店舗⇔スタッフ・注文⇔決済・親子/多対多関係）
+- マスタデータの定義（店舗/商品/カテゴリ/権限/ステータス/通知テンプレートマスタ・更新者・タイミング）
+- データ移行要件（既存データ有無・移行対象・移行元形式・タイミング・リハーサル要否・クレンジング・確認方法）
+- ログ・履歴要件（ログイン/操作/更新/通知/決済/エラー/監査ログ・保存期間）
+
+{HTML_RULES}"""
+    ctx = _approved_context(approved)
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nデータ・情報設計要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000)
+
+
+def _req_integration(form_data, approved, previous_output, edit_instruction):
+    system = f"""あなたはシステムインテグレーション専門の要件定義コンサルタントです。
+「外部連携・API要件」の要件定義レポートHTMLを作成してください。
+
+含める内容:
+- 連携先システムの整理（基幹/CRM/POS/EC/決済代行/会員管理/地図API/SNSログイン/MA/BI/LINE/Slack/GA/Firebase等）
+- 連携方式の定義（API/CSV/バッチ/Webhook/SFTP/手動アップロード・リアルタイム/日次/月次連携）
+- 連携データの定義（送受信データ・データ形式JSON/XML/CSV・文字コード・タイムゾーン・ID連携ルール・エラー再送条件）
+- 認証・認可方式（APIキー/OAuth2.0/OpenID Connect/Basic認証/IP制限/クライアント証明書・トークン有効期限・権限スコープ）
+- 外部サービス依存リスク（API仕様変更・料金改定・レート制限・障害時代替手段・審査要件・契約主体）
+
+{HTML_RULES}"""
+    ctx = _approved_context(approved)
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n外部連携・API要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000)
+
+
+def _req_nonfunc(form_data, approved, previous_output, edit_instruction):
+    system = f"""あなたはシステムアーキテクト兼要件定義コンサルタントです。
+「非機能要件」の要件定義レポートHTMLを作成してください（数値・条件で合意できる形で記述）。
+
+含める内容:
+- 性能要件（想定同時/月間アクセス数・画面表示速度・検索/CSV出力/バッチ処理時間・ピーク時間帯・大量データ挙動）
+- 可用性要件（サービス提供時間・メンテナンス可能時間・年間稼働率・障害復旧目標RTO/RPO・冗長化・バックアップ頻度）
+- 拡張性要件（店舗追加・会員数増加・多言語対応・機能/連携追加・複数ブランド展開）
+- 保守性要件（ソースコード管理・環境分離dev/stg/prod・ログ確認・監視・設定変更のしやすさ・引き継ぎ資料）
+- 互換性要件（対応ブラウザ/OS/端末・最低サポートバージョン・アプリストア審査要件）
+- ユーザビリティ要件（完了までのステップ数・入力補助・エラー文言・管理画面一覧性・初見ユーザー導線）
+
+{HTML_RULES}"""
+    ctx = _approved_context(approved)
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n非機能要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000)
+
+
+def _req_security(form_data, approved, previous_output, edit_instruction):
+    system = f"""あなたはセキュリティ・法務専門の要件定義コンサルタントです。
+「セキュリティ・法務・コンプライアンス要件」の要件定義レポートHTMLを作成してください。
+
+含める内容:
+- 認証要件（ID/PW・メール/SMS認証・SNSログイン・SSO・多要素認証・PW強度ポリシー・ログイン失敗制御・セッション管理）
+- 認可要件（ロール別権限・画面/API/データ単位アクセス制御・管理者権限分離・退職者権限削除）
+- 個人情報保護（取得情報・利用目的・同意取得・PP/利用規約・第三者提供・委託先管理・削除/開示請求対応）
+- 機密情報保護（暗号化・マスキング・アクセスログ・ダウンロード制御・IP制限・本番データ取り扱い）
+- 脆弱性対策（SQLインジェクション/XSS/CSRF対策・認証突破対策・ファイルアップロード制御・API不正利用対策）
+- 関連法令・規約（個人情報保護法・特商法・資金決済法・景表法・電気通信事業法・業界別ガイドライン・AppStore/Google Playポリシー）
+
+{HTML_RULES}"""
+    ctx = _approved_context(approved)
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nセキュリティ・法務・コンプライアンス要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000)
+
+
+def _req_operation(form_data, approved, previous_output, edit_instruction):
+    system = f"""あなたは運用設計専門の要件定義コンサルタントです。
+「運用・保守要件」の要件定義レポートHTMLを作成してください。
+
+含める内容:
+- 運用体制（運用責任者・問い合わせ窓口・障害一次対応者・保守/コンテンツ/マスタ/権限管理担当）
+- 管理画面で対応する業務（ユーザー/店舗/商品/予約/注文/お知らせ/クーポン/ポイント/問い合わせ/CSV出力/権限管理）
+- 問い合わせ対応（経路・管理者通知方法・ステータス・回答履歴・FAQ連携・エスカレーション・対応期限）
+- 障害対応（検知方法・通知先・初動手順・復旧手順・顧客告知方法・障害報告書・再発防止管理）
+- 保守・改修運用（軽微改修受付・仕様変更判断基準・追加見積条件・月次定例・SLA・バージョンアップ方針）
+
+{HTML_RULES}"""
+    ctx = _approved_context(approved)
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n運用・保守要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000)
+
+
+def _req_testing(form_data, approved, previous_output, edit_instruction):
+    system = f"""あなたはQAエンジニア兼要件定義コンサルタントです。
+「テスト・受入基準」の要件定義レポートHTMLを作成してください。
+
+含める内容:
+- テスト方針（単体/結合/システム/受入/回帰/性能/セキュリティ/端末/ブラウザ検証）
+- 受入条件（主要機能動作・必須業務フロー完了・管理者データ確認・エラー表示・指定ブラウザ/端末・性能・セキュリティ）
+- テスト観点の整理（正常系/異常系/境界値/権限別/データなし/大量データ/通信エラー/外部APIエラー/決済失敗/セッション切れ/二重送信）
+- 受入テストの役割分担（ベンダー/発注者/業務担当者/管理者/店舗担当・不具合報告・修正確認方法）
+- 検収条件（納品物一覧・検収期間・不具合重大度分類・検収対象外条件・仕様変更扱い条件・リリース判定会議）
+
+{HTML_RULES}"""
+    ctx = _approved_context(approved)
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nテスト・受入基準レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000)
+
+
+def _req_release(form_data, approved, previous_output, edit_instruction):
+    system = f"""あなたはリリースマネジメント専門の要件定義コンサルタントです。
+「リリース・移行要件」の要件定義レポートHTMLを作成してください。
+
+含める内容:
+- リリース方式（一括/段階/店舗別/ユーザー限定/β版・旧システム並行稼働・STEP1/2の切り分け）
+- 本番切替（切替日時・メンテナンス時間・旧システム停止・データ移行タイミング・DNS切替・アプリ公開申請・審査期間・判定基準）
+- リリース前準備（管理者アカウント作成・初期マスタ登録・通知文面・FAQ整備・マニュアル・社内説明会・現場トレーニング・問い合わせ窓口）
+- リリース後対応（初期監視・問い合わせ増加対応・障害即時対応・アクセス/利用状況確認・改善要望収集・初回改善リリース予定）
+
+{HTML_RULES}"""
+    ctx = _approved_context(approved)
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nリリース・移行要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000)
+
+
+def _req_management(form_data, approved, previous_output, edit_instruction):
+    system = f"""あなたはプロジェクトマネージャー兼要件定義コンサルタントです。
+「プロジェクト管理・合意形成」の要件定義レポートHTMLを作成してください。
+
+含める内容:
+- ステークホルダー整理（決裁者・業務責任者・現場担当者・情シス・法務・マーケ・CS・ベンダーPM・デザイナー・エンジニア）
+- 会議体の設計（定例会・業務ヒアリング・画面レビュー・技術確認会・法務確認会・リリース判定会・課題管理会議）
+- 課題・リスク管理（未決事項・確認事項・仕様/技術/外部連携/スケジュール/法務/運用リスク・意思決定待ち事項）
+- 仕様変更管理（要件定義中/基本設計後/開発着手後の変更・追加見積対象・スケジュール影響・変更履歴管理）
+- 成果物の定義（要件定義書・業務フロー・機能一覧・画面一覧・画面遷移図・ワイヤーフレーム・データ項目定義・外部連携一覧・非機能要件一覧・権限一覧・テスト方針・移行方針・課題管理表・見積前提条件）
+
+{HTML_RULES}"""
+    ctx = _approved_context(approved)
+    user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nプロジェクト管理・合意形成レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000)
+
+
+# ── Sub-phase chat (any sub-phase) ────────────────────────────────────────────
+
+def chat(
+    sub_phase_key: str,
+    form_data: dict,
+    approved_outputs: Dict[str, str],
+    existing_html: Optional[str],
+    message: str,
+    append_to_report: bool = False,
+) -> dict:
+    """Search + answer a question about a sub-phase report.
+    If append_to_report=True, appends the research result as a new section in existing_html.
+    Returns {"answer": str, "html": str|None}.
+    """
+    search_result = _search(message)
+
+    answer_system = (
+        "あなたは優秀なITコンサルタントです。プロジェクトに関する質問にWeb調査結果を元に詳しく回答してください。"
+        "回答は日本語・具体的・数値や根拠を含む内容にしてください。"
+    )
+    answer_user = (
+        f"## プロジェクト情報\n{_form_summary(form_data)}\n\n"
+        f"## 質問\n{message}\n\n"
+        f"## Web調査結果\n{search_result}"
+    )
+    client = _get_anthropic()
+    ans_resp = _create_with_retry(
+        client, model="claude-sonnet-4-6", max_tokens=4000,
+        system=answer_system,
+        messages=[{"role": "user", "content": answer_user}],
+    )
+    answer = ans_resp.content[0].text.strip()
+
+    if not append_to_report or not existing_html:
+        return {"answer": answer, "html": None}
+
+    # Build an HTML section for the appended content
+    section_system = (
+        "あなたはHTMLコンテンツ生成ツールです。"
+        "質問・回答・調査結果から、レポートに追記するHTMLセクションを生成してください。"
+        "出力はHTMLコードのみ（<section>タグから始める）。<!DOCTYPE>等の文書構造は不要。"
+        "Tailwind CSSクラスを使用してください。数値データがあれば barchart-data 形式のテーブルで表示。"
+    )
+    section_user = (
+        f"以下の内容をTailwind CSSスタイルのHTMLセクションに変換してください:\n\n"
+        f"## 質問\n{message}\n\n"
+        f"## 回答・調査結果\n{answer}\n\n"
+        "出典URLがあれば <a href='URL' target='_blank' class='text-xs text-blue-500 underline ml-1'>出典</a> 形式でインラインに含めてください。\n"
+        "<section class='mt-8 pt-8 border-t-2 border-blue-200'> から始めてください。"
+    )
+    sec_resp = _create_with_retry(
+        client, model="claude-haiku-4-5-20251001", max_tokens=4000,
+        system=section_system,
+        messages=[{"role": "user", "content": section_user}],
+    )
+    section_html = sec_resp.content[0].text.strip()
+
+    # Strip any document boilerplate the model may have added
+    section_html = re.sub(r'(?i)<!DOCTYPE[^>]*>\s*', '', section_html)
+    section_html = re.sub(r'(?i)<html[^>]*>\s*', '', section_html)
+    section_html = re.sub(r'(?i)<head\b.*?</head>\s*', '', section_html, flags=re.DOTALL)
+    section_html = re.sub(r'(?i)<body[^>]*>\s*', '', section_html)
+    section_html = re.sub(r'(?i)\s*</body>\s*</html>\s*$', '', section_html)
+
+    wrapped = (
+        f'\n\n<div class="mx-auto max-w-5xl px-8">\n'
+        f'<p class="text-xs text-blue-400 mb-1">📝 追加調査結果</p>\n'
+        f'{section_html.strip()}\n</div>'
+    )
+
+    if re.search(r'</body>', existing_html, re.IGNORECASE):
+        new_html = re.sub(r'(?i)</body>', wrapped + '\n</body>', existing_html, count=1)
+    else:
+        new_html = existing_html + wrapped
+
+    new_html = _inject_charts(new_html)
+    return {"answer": answer, "html": new_html}
+
+
 # ── Public entry point ────────────────────────────────────────────────────────
 
 _HANDLERS = {
@@ -1092,6 +1382,18 @@ _HANDLERS = {
     "project_schedule": _project_schedule,
     "project_budget": _project_budget,
     "project_legal": _project_legal,
+    "req_business": _req_business,
+    "req_stakeholders": _req_stakeholders,
+    "req_functional": _req_functional,
+    "req_ui_ux": _req_ui_ux,
+    "req_data": _req_data,
+    "req_integration": _req_integration,
+    "req_nonfunc": _req_nonfunc,
+    "req_security": _req_security,
+    "req_operation": _req_operation,
+    "req_testing": _req_testing,
+    "req_release": _req_release,
+    "req_management": _req_management,
 }
 
 

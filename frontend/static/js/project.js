@@ -66,6 +66,9 @@ const SUB_PHASES = [
   'what_features', 'what_ia', 'what_nonfunc',
   'how_platform', 'how_feasibility', 'how_integration',
   'project_schedule', 'project_budget', 'project_legal',
+  'req_business', 'req_stakeholders', 'req_functional', 'req_ui_ux',
+  'req_data', 'req_integration', 'req_nonfunc', 'req_security',
+  'req_operation', 'req_testing', 'req_release', 'req_management',
 ];
 const SUB_PHASE_LABELS = {
   why_background:    '背景と目的の明確化',
@@ -83,6 +86,18 @@ const SUB_PHASE_LABELS = {
   project_schedule:  'スケジュールとマイルストーン',
   project_budget:    '予算と体制',
   project_legal:     '法務・コンプライアンス',
+  req_business:      '事業・業務要件',
+  req_stakeholders:  'ステークホルダー・利用者',
+  req_functional:    '機能要件',
+  req_ui_ux:         '画面・UI/UX要件',
+  req_data:          'データ・情報設計',
+  req_integration:   '外部連携・API要件',
+  req_nonfunc:       '非機能要件',
+  req_security:      'セキュリティ・法務・コンプライアンス',
+  req_operation:     '運用・保守要件',
+  req_testing:       'テスト・受入基準',
+  req_release:       'リリース・移行',
+  req_management:    'プロジェクト管理・合意形成',
 };
 const SUB_PHASE_GROUPS = [
   { label: 'ビジネス・戦略（Why）', keys: ['why_background', 'why_market', 'why_business_model'] },
@@ -90,6 +105,11 @@ const SUB_PHASE_GROUPS = [
   { label: 'プロダクト・機能（What）', keys: ['what_features', 'what_ia', 'what_nonfunc'] },
   { label: 'システム・技術（How）', keys: ['how_platform', 'how_feasibility', 'how_integration'] },
   { label: '計画・制約（Project）', keys: ['project_schedule', 'project_budget', 'project_legal'] },
+  { label: '要件定義（Requirements）', keys: [
+    'req_business', 'req_stakeholders', 'req_functional', 'req_ui_ux',
+    'req_data', 'req_integration', 'req_nonfunc', 'req_security',
+    'req_operation', 'req_testing', 'req_release', 'req_management',
+  ]},
 ];
 const STATUS_LABELS = {
   pending: '確認待ち',
@@ -110,6 +130,7 @@ let doneOutputs = {};        // { proposal_outline: {...}, mockup: {...} } when 
 let selectedDoneTab = 'planning'; // active tab when done
 let subPhaseHistories = {};  // cache: key → array of versions (newest first)
 let viewingVersionIdx = 0;   // 0 = newest version
+let chatHistories = {};      // key → [{role:'user'|'ai', text:str}, ...]
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 
@@ -273,8 +294,7 @@ function navigateSubVersion(delta) {
   const isCurrentActive = selectedSubPhase === project.current_sub_phase;
   const showReview = isNewest && output.status === 'pending' && isCurrentActive && project.current_phase !== 'done';
   document.getElementById('sub-review-panel').classList.toggle('hidden', !showReview);
-  const showDeep = isNewest && selectedSubPhase === 'why_market' && output.status === 'pending' && isCurrentActive && project.current_phase !== 'done';
-  document.getElementById('deep-dive-panel').classList.toggle('hidden', !showDeep);
+  document.getElementById('chat-panel').classList.toggle('hidden', !output.output_html);
   document.getElementById('sub-reject-form').classList.add('hidden');
   document.getElementById('sub-edit-form').classList.add('hidden');
   document.getElementById('sub-truncation-banner').classList.add('hidden');
@@ -348,12 +368,13 @@ async function selectSubPhase(key) {
   const isTruncated = output && output.is_truncated && output.status === 'pending' && isCurrentActive && project.current_phase !== 'done';
   document.getElementById('sub-truncation-banner').classList.toggle('hidden', !isTruncated);
 
-  // Deep-dive panel: why_market only, when pending, on current active sub-phase (and not done)
-  const deepDivePanel = document.getElementById('deep-dive-panel');
-  if (key === 'why_market' && output && output.status === 'pending' && isCurrentActive && project.current_phase !== 'done') {
-    deepDivePanel.classList.remove('hidden');
+  // Chat panel: show when there is output for this sub-phase
+  const chatPanel = document.getElementById('chat-panel');
+  if (output && output.output_html) {
+    chatPanel.classList.remove('hidden');
+    renderChatHistory(key);
   } else {
-    deepDivePanel.classList.add('hidden');
+    chatPanel.classList.add('hidden');
   }
 
   renderVersionNav(history, 0);
@@ -443,40 +464,79 @@ async function reviewSubPhase(action, comment = '', editInstruction = '') {
   }
 }
 
-// ── Deep-dive ──────────────────────────────────────────────────────────────────
+// ── Chat ───────────────────────────────────────────────────────────────────────
 
-async function runDeepDive() {
-  const input = document.getElementById('deep-dive-input').value.trim();
-  if (!input) { alert('追加で調査したい内容を入力してください'); return; }
+function renderChatHistory(key) {
+  const history = chatHistories[key] || [];
+  const container = document.getElementById('chat-history');
+  if (history.length === 0) {
+    container.classList.add('hidden');
+    return;
+  }
+  container.classList.remove('hidden');
+  container.innerHTML = history.map(entry => {
+    if (entry.role === 'user') {
+      return `<div class="text-right"><span class="inline-block bg-blue-100 text-blue-800 rounded-lg px-3 py-1 text-xs max-w-xs text-left">${escapeHtml(entry.text)}</span></div>`;
+    }
+    return `<div class="text-left"><span class="inline-block bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs max-w-prose whitespace-pre-wrap">${escapeHtml(entry.text)}</span></div>`;
+  }).join('');
+  container.scrollTop = container.scrollHeight;
+}
 
-  setDeepDiveRunning(true);
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input').value.trim();
+  if (!input) { alert('メッセージを入力してください'); return; }
+  const appendToReport = document.getElementById('chat-append-check').checked;
+
+  if (!chatHistories[selectedSubPhase]) chatHistories[selectedSubPhase] = [];
+  chatHistories[selectedSubPhase].push({ role: 'user', text: input });
+  renderChatHistory(selectedSubPhase);
+
+  setChatRunning(true);
   try {
-    const res = await fetch('/api/projects/deep-dive', {
+    const res = await fetch('/api/projects/sub-phase-chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: projectId, deep_dive_request: input }),
+      body: JSON.stringify({
+        project_id: projectId,
+        sub_phase_key: selectedSubPhase,
+        message: input,
+        append_to_report: appendToReport,
+      }),
     });
     if (!res.ok) {
       const err = await res.json();
       alert('エラー: ' + (err.detail || '不明なエラー'));
+      chatHistories[selectedSubPhase].pop();
+      renderChatHistory(selectedSubPhase);
       return;
     }
     const data = await res.json();
-    subPhaseOutputs['why_market'] = { id: data.output_id, output_html: data.html, status: 'pending', sub_phase_key: 'why_market' };
-    delete subPhaseHistories['why_market'];  // invalidate cache
-    document.getElementById('deep-dive-input').value = '';
-    notifyComplete('✓ 追加調査 完了', '市場・競合分析');
-    selectSubPhase('why_market');
+    chatHistories[selectedSubPhase].push({ role: 'ai', text: data.answer });
+    document.getElementById('chat-input').value = '';
+    document.getElementById('chat-append-check').checked = false;
+    renderChatHistory(selectedSubPhase);
+
+    if (appendToReport && data.html) {
+      subPhaseOutputs[selectedSubPhase] = { id: data.output_id, output_html: data.html, status: 'pending', sub_phase_key: selectedSubPhase };
+      delete subPhaseHistories[selectedSubPhase];
+      notifyComplete(`✓ ${SUB_PHASE_LABELS[selectedSubPhase] || selectedSubPhase} 追記完了`);
+      loadIframe(document.getElementById('sub-iframe'), data.html, 500);
+    }
   } catch (e) {
     alert('通信エラー: ' + e.message);
   } finally {
-    setDeepDiveRunning(false);
+    setChatRunning(false);
   }
 }
 
-function setDeepDiveRunning(flag) {
-  document.getElementById('btn-deep-dive').disabled = flag;
-  document.getElementById('deep-dive-spinner').classList.toggle('hidden', !flag);
+function setChatRunning(flag) {
+  document.getElementById('btn-chat-send').disabled = flag;
+  document.getElementById('chat-spinner').classList.toggle('hidden', !flag);
 }
 
 // ── Regular phase panel (factcheck / proposal_outline / mockup) ────────────────
@@ -660,7 +720,7 @@ document.getElementById('btn-sub-edit-submit').addEventListener('click', () => {
   reviewSubPhase('edit', '', instruction);
 });
 
-document.getElementById('btn-deep-dive').addEventListener('click', () => runDeepDive());
+document.getElementById('btn-chat-send').addEventListener('click', () => sendChat());
 
 // Regular phase controls
 document.getElementById('btn-run').addEventListener('click', () => runAgent(project.current_phase));

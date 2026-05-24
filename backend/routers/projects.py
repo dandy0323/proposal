@@ -59,6 +59,13 @@ class DeepDiveRequest(BaseModel):
     deep_dive_request: str
 
 
+class SubPhaseChatRequest(BaseModel):
+    project_id: int
+    sub_phase_key: str
+    message: str
+    append_to_report: bool = False
+
+
 @router.get("")
 def list_projects():
     return db.list_projects()
@@ -198,6 +205,35 @@ async def deep_dive(req: DeepDiveRequest):
         raise HTTPException(status_code=500, detail=str(e))
     output_id = db.save_sub_phase_output(req.project_id, key, html)
     return {"output_id": output_id, "html": html}
+
+
+@router.post("/sub-phase-chat")
+async def sub_phase_chat(req: SubPhaseChatRequest):
+    project = db.get_project(req.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    from backend.agents import sub_phase as sp
+
+    form_data = project["form_data"]
+    approved_outputs = db.get_approved_sub_phase_html(req.project_id)
+    existing = db.get_latest_sub_phase_output(req.project_id, req.sub_phase_key)
+
+    try:
+        result = sp.chat(
+            req.sub_phase_key, form_data, approved_outputs,
+            existing_html=existing.get("output_html") if existing else None,
+            message=req.message,
+            append_to_report=req.append_to_report,
+        )
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if req.append_to_report and result.get("html"):
+        output_id = db.save_sub_phase_output(req.project_id, req.sub_phase_key, result["html"])
+        return {"answer": result["answer"], "html": result["html"], "output_id": output_id}
+    return {"answer": result["answer"]}
 
 
 # ── Main phase endpoints (factcheck / proposal_outline / mockup) ───────────────

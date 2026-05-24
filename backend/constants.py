@@ -16,6 +16,18 @@ SUB_PHASES: List[str] = [
     "project_schedule",
     "project_budget",
     "project_legal",
+    "req_business",
+    "req_stakeholders",
+    "req_functional",
+    "req_ui_ux",
+    "req_data",
+    "req_integration",
+    "req_nonfunc",
+    "req_security",
+    "req_operation",
+    "req_testing",
+    "req_release",
+    "req_management",
 ]
 
 SUB_PHASE_LABELS: Dict[str, str] = {
@@ -34,6 +46,18 @@ SUB_PHASE_LABELS: Dict[str, str] = {
     "project_schedule": "スケジュールとマイルストーン",
     "project_budget": "予算と体制",
     "project_legal": "法務・コンプライアンス",
+    "req_business": "事業・業務要件",
+    "req_stakeholders": "ステークホルダー・利用者",
+    "req_functional": "機能要件",
+    "req_ui_ux": "画面・UI/UX要件",
+    "req_data": "データ・情報設計",
+    "req_integration": "外部連携・API要件",
+    "req_nonfunc": "非機能要件",
+    "req_security": "セキュリティ・法務・コンプライアンス",
+    "req_operation": "運用・保守要件",
+    "req_testing": "テスト・受入基準",
+    "req_release": "リリース・移行",
+    "req_management": "プロジェクト管理・合意形成",
 }
 
 SUB_PHASE_GROUPS: Dict[str, List[str]] = {
@@ -42,6 +66,11 @@ SUB_PHASE_GROUPS: Dict[str, List[str]] = {
     "プロダクト・機能（What）": ["what_features", "what_ia", "what_nonfunc"],
     "システム・技術（How）": ["how_platform", "how_feasibility", "how_integration"],
     "計画・制約（Project）": ["project_schedule", "project_budget", "project_legal"],
+    "要件定義（Requirements）": [
+        "req_business", "req_stakeholders", "req_functional", "req_ui_ux",
+        "req_data", "req_integration", "req_nonfunc", "req_security",
+        "req_operation", "req_testing", "req_release", "req_management",
+    ],
 }
 
 MAIN_PHASE_ORDER = ["planning", "proposal_outline", "mockup", "done"]

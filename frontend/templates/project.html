@@ -137,21 +137,25 @@
           </div>
         </div>
 
-        <!-- Deep-dive panel (why_market only) -->
-        <div id="deep-dive-panel" class="hidden px-5 py-4 border-t border-blue-100 bg-blue-50 flex-shrink-0">
+        <!-- Chat panel (all sub-phases) -->
+        <div id="chat-panel" class="hidden px-5 py-4 border-t border-blue-100 bg-blue-50 flex-shrink-0">
           <div class="flex items-center gap-2 mb-2">
-            <span class="text-sm font-semibold text-blue-700">追加調査</span>
-            <span class="text-xs text-blue-500">競合・市場について深掘り調査を実行します</span>
+            <span class="text-sm font-semibold text-blue-700">追加調査・チャット</span>
+            <span class="text-xs text-blue-500">このレポートに関する質問や深掘り調査ができます</span>
           </div>
+          <div id="chat-history" class="mb-3 space-y-2 max-h-48 overflow-y-auto hidden"></div>
           <div class="flex gap-3 items-start">
-            <textarea id="deep-dive-input" rows="2"
+            <textarea id="chat-input" rows="2"
               class="flex-1 border border-blue-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-              placeholder="例：〇〇企業の競合優位性について深掘りして"></textarea>
-            <div class="flex flex-col items-center gap-1">
-              <button id="btn-deep-dive" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap">
-                追加調査を実行
+              placeholder="例：競合他社との比較を詳しく調査して・この数値の根拠を教えて"></textarea>
+            <div class="flex flex-col gap-1">
+              <label class="flex items-center gap-1 text-xs text-blue-700 cursor-pointer">
+                <input type="checkbox" id="chat-append-check" class="rounded"> レポートに追記
+              </label>
+              <button id="btn-chat-send" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap">
+                送信
               </button>
-              <div id="deep-dive-spinner" class="hidden spinner"></div>
+              <div id="chat-spinner" class="hidden spinner"></div>
             </div>
           </div>
         </div>
@@ -229,6 +233,6 @@
 
 </main>
 
-<script src="/static/js/project.js?v=20260516c"></script>
+<script src="/static/js/project.js?v=20260524a"></script>
 </body>
 </html>
