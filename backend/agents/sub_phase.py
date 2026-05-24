@@ -102,12 +102,6 @@ def _search(query: str) -> str:
 
 
 def _bars_to_html(bars: list, title: str) -> str:
-    """Convert a list of (label, value) pairs to a horizontal bar-chart HTML table.
-
-    Uses CSS linear-gradient on table cells so there are NO empty div elements.
-    The iframe cleanup in project.js removes childless + textless elements; using
-    table cells with gradient backgrounds and numeric text avoids that entirely.
-    """
     if not bars:
         return ''
     max_val = max(v for _, v in bars)
@@ -138,7 +132,7 @@ def _bars_to_html(bars: list, title: str) -> str:
         '<div style="margin:1.5rem 0;padding:16px;background:#f8fafc;'
         'border-radius:8px;border:1px solid #e2e8f0;overflow:hidden;">'
         f'<table style="width:100%;border-collapse:collapse;">'
-        f'<tbody>{title_row}{""join(rows)}</tbody>'
+        f'<tbody>{title_row}{"".join(rows)}</tbody>'
         f'</table></div>'
     )
 
@@ -152,8 +146,7 @@ def _inject_charts(html: str) -> str:
     """
     # Format 1: <table class="barchart-data">
     def convert_table(m):
-        # Handle both single and double quotes for summary attribute
-        summary_match = re.search(r'summary=["\'](.*?)["\']', m.group(0))
+        summary_match = re.search(r'summary=["\']([^"\']*)["\']', m.group(0))
         title = summary_match.group(1) if summary_match else ''
         rows = re.findall(r'<tr>\s*<td[^>]*>(.*?)</td>\s*<td[^>]*>(.*?)</td>\s*</tr>', m.group(0), re.IGNORECASE | re.DOTALL)
         bars = []
@@ -166,11 +159,10 @@ def _inject_charts(html: str) -> str:
                 pass
         print(f"[inject_charts] barchart-data title={title!r} bars={bars}")
         chart = _bars_to_html(bars, title)
-        return chart if chart else ''  # Remove empty barchart-data tables entirely
+        return chart if chart else ''
 
-    # Match class="barchart-data" with either quote style and optional extra classes
     html = re.sub(
-        r'<table\b[^>]*class=["\''][^"\']*barchart-data[^"\']*["\''][^>]*>.*?</table>',
+        r'<table\b[^>]*class=["\'][^"\']*barchart-data[^"\']*["\'][^>]*>.*?</table>',
         convert_table,
         html,
         flags=re.IGNORECASE | re.DOTALL,
@@ -200,9 +192,6 @@ def _inject_charts(html: str) -> str:
     html = re.sub(r'<!--\s*CHART:\s*(.*?)\s*-->', convert_comment, html, flags=re.DOTALL)
 
     # Remove inline <script> tags (those without src=) BEFORE placeholder cleanup.
-    # Chart.js/Plotly init code leaves behind empty height divs; removing scripts first
-    # lets the next step catch those divs.
-    # Scripts with src= (e.g. Tailwind CDN) are preserved.
     html = re.sub(
         r'<script\b(?![^>]*\bsrc\s*=)[^>]*>.*?</script>',
         '',
@@ -210,30 +199,25 @@ def _inject_charts(html: str) -> str:
         flags=re.IGNORECASE | re.DOTALL,
     )
 
-    # Remove canvas elements (self-closing or with explicit closing tag)
+    # Remove canvas elements
     html = re.sub(r'<canvas\b[^>]*/>', '', html, flags=re.IGNORECASE)
     html = re.sub(r'<canvas\b[^>]*>.*?</canvas>', '', html, flags=re.IGNORECASE | re.DOTALL)
 
     # Remove empty AI-generated chart placeholder divs.
-    # After script/canvas removal the divs are left empty — these produce blank white boxes.
-    # Run multiple passes to handle nested empty containers.
     for _ in range(6):
         before = html
-        # Div with explicit height/min-height containing only whitespace or comments
         html = re.sub(
             r'<div\b[^>]*(?:min-height|height)\s*:\s*\d+[^>]*>\s*(?:<!--.*?-->\s*)*</div>',
             '',
             html,
             flags=re.IGNORECASE | re.DOTALL,
         )
-        # Div with chart-related class/id names that are now empty
         html = re.sub(
-            r'<div\b[^>]*(?:class|id)=["\''][^"\']*chart[^"\']*["\''][^>]*>\s*(?:<!--.*?-->\s*)*</div>',
+            r'<div\b[^>]*(?:class|id)=["\'][^"\']*chart[^"\']*["\'][^>]*>\s*(?:<!--.*?-->\s*)*</div>',
             '',
             html,
             flags=re.IGNORECASE | re.DOTALL,
         )
-        # Any completely empty div (only whitespace/comments) — catches stripped chart wrappers
         html = re.sub(
             r'<div\b[^>]*>\s*(?:<!--.*?-->\s*)*</div>',
             '',
@@ -352,13 +336,6 @@ _SECTION_FRAGMENT_SYSTEM = """あなたはHTMLコンテンツ生成ツールで�
 
 
 def _gen_market_fragment(user_content: str, max_tokens: int = 16000) -> str:
-    """Generate one HTML body section fragment for the market analysis report.
-
-    Uses a dedicated fresh API call per section so the AI can't skip or truncate
-    sections due to running out of context. If the section hits max_tokens,
-    continuation is attempted automatically (up to 5 times at 16000 tokens each).
-    Exceptions are caught and logged so one failing section doesn't abort the whole report.
-    """
     client = _get_anthropic()
     try:
         response = _create_with_retry(
@@ -400,20 +377,14 @@ def _gen_market_fragment(user_content: str, max_tokens: int = 16000) -> str:
         text += chunk
         response = cont_resp
 
-    # Clean the fragment: strip ALL HTML document boilerplate from ANYWHERE in the text.
-    # The AI sometimes generates a mini-document per sub-section (each with its own
-    # DOCTYPE/html/head/body), which leaves embedded </body></html> tags in the middle
-    # of the fragment — browsers stop rendering at the first </html> they see.
     result = text
 
-    # Remove code fences if present
     m_fence = re.search(r'```[ \t]*\w*[ \t]*\n', result)
     if m_fence:
         result = result[m_fence.end():]
         if result.rstrip().endswith('```'):
             result = result.rstrip()[:-3]
 
-    # Strip full HTML document boilerplate from ANYWHERE in the fragment
     result = re.sub(r'(?i)<!DOCTYPE\b[^>]*>\s*', '', result)
     result = re.sub(r'(?i)<html\b[^>]*>\s*', '', result)
     result = re.sub(r'(?i)<head\b.*?</head>\s*', '', result, flags=re.DOTALL)
@@ -421,12 +392,10 @@ def _gen_market_fragment(user_content: str, max_tokens: int = 16000) -> str:
     result = re.sub(r'(?i)\s*</body>\s*</html>', '', result)
     result = re.sub(r'(?i)\s*</html>', '', result)
 
-    # Reject if no HTML tags remain (AI returned plain text/apology)
     if not re.search(r'<[a-zA-Z][^>]{0,100}>', result):
         print(f"[market_fragment] WARN: no HTML tags in result, returning empty")
         return ''
 
-    # Strip any AI preamble text before the first opening HTML tag
     m_first = re.search(r'<[a-zA-Z]', result)
     if m_first and m_first.start() > 0:
         result = result[m_first.start():]
@@ -435,7 +404,6 @@ def _gen_market_fragment(user_content: str, max_tokens: int = 16000) -> str:
 
 
 def _build_market_report_html(industry: str, *fragments: str) -> str:
-    """Assemble section fragments into a complete, well-formed HTML document."""
     head = f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -470,14 +438,8 @@ def _run_simple(
     continuation_hint: str = "",
     max_continuations: int = 8,
 ) -> str:
-    """Run Claude without tools. Auto-continues up to max_continuations times if output is truncated.
-
-    Each continuation is a FRESH single-turn conversation to avoid the model getting
-    confused by the original long research context in a multi-turn history.
-    """
     client = _get_anthropic()
 
-    # --- Initial generation ---
     response = _create_with_retry(
         client, model=model, max_tokens=max_tokens, system=system,
         messages=[{"role": "user", "content": user_msg}],
@@ -485,11 +447,9 @@ def _run_simple(
     accumulated = _strip(response.content[0].text)
     print(f"[run_simple] initial: stop={response.stop_reason} len={len(accumulated)} model={model}")
 
-    # Strip closing tags helper (makes </body> optional since AI sometimes omits it)
     def _strip_close(html: str) -> str:
         return re.sub(r'(?:\s*</body>)?\s*</html>\s*$', '', html.rstrip(), flags=re.IGNORECASE).rstrip()
 
-    # --- Continuation loop ---
     for attempt in range(max_continuations):
         html_closed = bool(re.search(r'</html\s*>', accumulated, re.IGNORECASE))
         sections_complete = complete_fn is None or complete_fn(accumulated)
@@ -498,7 +458,6 @@ def _run_simple(
             break
 
         if html_closed and not sections_complete:
-            # Premature close: AI ended the document but required sections are missing.
             base_open = _strip_close(accumulated)
             tail = base_open[-2000:]
             hint_block = f"\n{continuation_hint}\n" if continuation_hint else ""
@@ -513,7 +472,6 @@ def _run_simple(
                 "- 全欠落セクションを出力後、必ず</body></html>で終了"
             )
         else:
-            # Truly truncated mid-content — continue from the cut-off point
             tail = accumulated[-1500:]
             hint_block = f"\n{continuation_hint}\n" if continuation_hint else ""
             cont_content = (
@@ -534,7 +492,6 @@ def _run_simple(
         )
         chunk = response.content[0].text
 
-        # Detect full document restart: DOCTYPE or <html> near the top of the chunk
         chunk_head = chunk[:600]
         is_restart = bool(
             re.search(r'(?i)<!DOCTYPE\s+html', chunk)
@@ -542,27 +499,22 @@ def _run_simple(
         )
         if is_restart:
             new_doc = _strip(chunk)
-            # Only use restart if it's a complete, better document
             if new_doc and re.search(r'</html\s*>', new_doc, re.IGNORECASE):
                 new_complete = complete_fn is None or complete_fn(new_doc)
                 if new_complete:
                     accumulated = new_doc
-                    break  # Complete restart — done
-            # Incomplete restart — discard, try again next iteration
+                    break
         else:
             cont = _strip_continuation(chunk)
             if cont:
-                # Overlap guard: duplicate content detection
                 cont_text_head = re.sub(r'<[^>]+>', '', cont[:300]).strip()
                 acc_text = re.sub(r'<[^>]+>', '', accumulated[:6000]).strip()
                 if len(cont_text_head) > 30 and cont_text_head[:80] in acc_text[:int(len(acc_text) * 0.7)]:
-                    # Looks like a body-only restart — discard
                     pass
                 else:
                     base = _strip_close(accumulated)
                     accumulated = base + "\n" + cont
 
-    # Final completeness check
     html_closed = bool(re.search(r'</html\s*>', accumulated, re.IGNORECASE))
     sections_complete = complete_fn is None or complete_fn(accumulated)
     if not (html_closed and sections_complete):
@@ -572,44 +524,30 @@ def _run_simple(
 
 
 def _strip(text: str) -> str:
-    """Return just the HTML content, stripping preamble text, code fences, and AI annotations."""
     text = text.strip()
-    # Find code fence in any format: ```html, ```, or ``` + newline + language line
     m = re.search(r'```[ \t]*\w*[ \t]*\n', text)
     if m:
         text = text[m.end():]
         if text.rstrip().endswith('```'):
             text = text.rstrip()[:-3]
         text = text.strip()
-    # Strip any remaining preamble before <!DOCTYPE or <html (handles no-fence preamble)
     m2 = re.search(r'(?i)<!DOCTYPE|<html\b', text)
     if m2 and m2.start() > 0:
         text = text[m2.start():]
-    # Strip ⚠ annotation leaf elements that escaped prompt filtering
     text = re.sub(r'<(p|div|span|li|td)\b[^>]*>[^<]*⚠[^<]*</\1>', '', text, flags=re.IGNORECASE)
-    # Strip AI meta-commentary elements: "修正内容：", "注記：", "補足：", etc.
     text = re.sub(
         r'<(p|div|span|li|td)\b[^>]*>[^<]*(修正内容|注記|補足|ファクトチェック)[：:][^<]*</\1>',
         '', text, flags=re.IGNORECASE,
     )
-    # Also strip loose markdown-style bold annotations that leak outside tags
     text = re.sub(r'\*\*(修正内容|注記|補足)[：:].*?\*\*', '', text, flags=re.DOTALL)
-    # Remove empty structural elements left by continuation artifacts
     text = re.sub(r'<(div|section|blockquote|aside)\b[^>]*>\s*</\1>', '', text, flags=re.IGNORECASE | re.DOTALL)
     return text.strip()
 
 
 def _strip_continuation(text: str) -> str:
-    """Extract HTML body content from a continuation chunk.
-
-    Returns empty string if the AI returned an apology/explanation instead of HTML,
-    preventing error text from being injected into the accumulated HTML.
-    """
     text = _strip(text)
-    # Reject if the result has no HTML tags — AI sent plain text / markdown instead of HTML
     if not re.search(r'<[a-zA-Z][^>]{0,100}>', text):
         return ''
-    # Strip full document boilerplate if AI restarted an HTML document
     text = re.sub(r'(?i)^\s*<!DOCTYPE[^>]*>\s*', '', text)
     text = re.sub(r'(?i)^\s*<html[^>]*>\s*', '', text)
     text = re.sub(r'(?i)^\s*<head\b.*?</head>\s*', '', text, flags=re.DOTALL)
@@ -670,7 +608,6 @@ def _why_background(form_data, approved, previous_output, edit_instruction):
 
 
 def _count_top_level_sections(html: str) -> int:
-    """Count <h2> headings whose text content starts with 'N.' (top-level only, not '1-1.')."""
     count = 0
     for m in re.finditer(r'<h2\b[^>]*>(.*?)</h2>', html, re.IGNORECASE | re.DOTALL):
         text = re.sub(r'<[^>]+>', '', m.group(1)).strip()
@@ -680,7 +617,6 @@ def _count_top_level_sections(html: str) -> int:
 
 
 def _missing_market_sections(accumulated: str) -> list[str]:
-    """Return list of section labels missing from accumulated (no heading with body content)."""
     heading_re = re.compile(r'<h[23]\b[^>]*>(.*?)</h[23]>', re.IGNORECASE | re.DOTALL)
     spans = [(m.start(), m.end(), re.sub(r'<[^>]+>', '', m.group(1)).strip())
              for m in heading_re.finditer(accumulated)]
@@ -711,14 +647,6 @@ def _missing_market_sections(accumulated: str) -> list[str]:
 
 
 def _market_analysis_complete(html: str) -> bool:
-    """Return True only when ALL 6 required sections have headings WITH substantive body content.
-
-    Checks that each required section heading has at least 300 chars of body content after it.
-    This prevents false positives from:
-    - TOC <li>/<a> items (caught by earlier approach too)
-    - AI-generated TOC that uses <h3> headings for each section title with no body content
-      (e.g. <h3>3. 競合分析</h3><ul><li>...</li></ul> where <ul> is only 50 chars)
-    """
     if not re.search(r'</html\s*>', html, re.IGNORECASE):
         print("[market_complete] INCOMPLETE: no </html>")
         return False
@@ -726,7 +654,6 @@ def _market_analysis_complete(html: str) -> bool:
         print(f"[market_complete] INCOMPLETE: too short ({len(html)})")
         return False
 
-    # Build list of (heading_text, content_length_until_next_heading)
     heading_re = re.compile(r'<h[23]\b[^>]*>(.*?)</h[23]>', re.IGNORECASE | re.DOTALL)
     spans = [(m.start(), m.end(), re.sub(r'<[^>]+>', '', m.group(1)).strip())
              for m in heading_re.finditer(html)]
@@ -747,8 +674,6 @@ def _market_analysis_complete(html: str) -> bool:
     ]
 
     for pat, name in required:
-        # At least one heading matching this pattern must have 300+ chars of body content after it
-        # TOC heading entries typically have 0-100 chars; real body sections have 300+ chars
         has_body = any(
             re.search(pat, h_text, re.IGNORECASE) and content_len >= 300
             for h_text, content_len in sections_with_content
@@ -765,7 +690,6 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
     industry = form_data.get("industry", "")
     competitors = form_data.get("competitors", "")
 
-    # --- Build search results (shared across all sections) ---
     queries = [
         f"{industry} 市場規模 成長率 2024 2025",
         f"{industry} 市場規模 億円 予測 レポート",
@@ -783,13 +707,12 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
     queries.append(f"{industry} グローバル 日本 市場比較")
 
     search_section = ""
-    for q in queries:  # no cap — run all queries
+    for q in queries:
         result = _search(q)
         search_section += f"\n### 検索: {q}\n{result}\n"
 
     project_info = _form_summary(form_data)
 
-    # --- Deep dive (append to existing report) ---
     if deep_dive_request and previous_output:
         extra_results = _search(deep_dive_request)
         system = f"""あなたはHTMLレポート生成ツールです。{HTML_RULES}"""
@@ -803,13 +726,8 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         )
         return _inject_charts(_run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000))
 
-    # ── Multi-section generation ─────────────────────────────────────────────────
-    # Each section is a separate focused API call.
-    # This eliminates truncation and completion-check false-positives entirely.
-
     ctx = f"## プロジェクト情報\n{project_info}\n\n## Web調査結果\n{search_section}\n\n"
 
-    # Section 1: Market size + growth (with bar charts)
     s1 = _gen_market_fragment(
         ctx +
         "## 指示\n"
@@ -823,7 +741,6 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         max_tokens=16000,
     )
 
-    # Section 2: Global vs Japan comparison
     s2 = _gen_market_fragment(
         ctx +
         "## 指示\n"
@@ -837,7 +754,6 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         max_tokens=16000,
     )
 
-    # Section 3: Competitor analysis (most token-intensive)
     comp_list = competitors or "（競合情報未記入）"
     s3 = _gen_market_fragment(
         ctx +
@@ -856,7 +772,6 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         max_tokens=16000,
     )
 
-    # Sections 4, 5, 6: each as a SEPARATE API call so no section is starved of tokens.
     s4 = _gen_market_fragment(
         ctx +
         "## 指示\n"
@@ -1075,7 +990,6 @@ def _how_feasibility(form_data, approved, previous_output, edit_instruction):
 {HTML_RULES}"""
 
     system_type = form_data.get("system_type", "")
-    # Pre-fetch relevant technology searches
     queries = [
         f"{system_type} 開発 技術スタック 2024",
         f"{system_type} フレームワーク ライブラリ",
