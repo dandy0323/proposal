@@ -79,12 +79,12 @@ def _get_tavily():
 
 def _search(query: str) -> str:
     try:
-        result = _get_tavily().search(query=query, max_results=5)
+        result = _get_tavily().search(query=query, max_results=10)
         lines = []
         for r in result.get("results", []):
             lines.append(f"タイトル: {r.get('title', '')}")
             lines.append(f"URL: {r.get('url', '')}")
-            lines.append(f"内容: {r.get('content', '')[:800]}")
+            lines.append(f"内容: {r.get('content', '')}")
             lines.append("---")
         return "\n".join(lines) if lines else "検索結果なし"
     except Exception as e:
@@ -109,7 +109,11 @@ def _bars_to_html(bars: list, title: str) -> str:
             f'<span style="font-size:12px;font-weight:700;color:#1e40af;">{display}</span>'
             f'</div>'
             f'<div style="height:20px;background:#e2e8f0;border-radius:4px;overflow:hidden;">'
-            f'<div style="height:20px;width:{pct}%;background:#3b82f6;border-radius:4px;"></div>'
+            # The inner bar div MUST contain a non-empty text node.
+            # The iframe cleanup in project.js removes any element with no children
+            # AND no text content — which would erase the colored bar, leaving blank charts.
+            f'<div style="height:20px;width:{pct}%;background:#3b82f6;border-radius:4px;'
+            f'font-size:1px;line-height:20px;color:transparent;">.</div>'
             f'</div></div>'
         )
     return (
@@ -312,12 +316,12 @@ _SECTION_FRAGMENT_SYSTEM = """あなたはHTMLコンテンツ生成ツールで�
 """
 
 
-def _gen_market_fragment(user_content: str, max_tokens: int = 8000) -> str:
+def _gen_market_fragment(user_content: str, max_tokens: int = 32000) -> str:
     """Generate one HTML body section fragment for the market analysis report.
 
     Uses a dedicated fresh API call per section so the AI can't skip or truncate
     sections due to running out of context. If the section hits max_tokens,
-    one continuation is attempted automatically.
+    continuation is attempted automatically (up to 3 times).
     """
     client = _get_anthropic()
     response = _create_with_retry(
@@ -330,19 +334,24 @@ def _gen_market_fragment(user_content: str, max_tokens: int = 8000) -> str:
     text = response.content[0].text
     print(f"[market_fragment] stop={response.stop_reason} len={len(text)}")
 
-    if response.stop_reason == "max_tokens":
+    for _cont_attempt in range(3):
+        if response.stop_reason != "max_tokens":
+            break
         cont_resp = _create_with_retry(
             client,
             model="claude-sonnet-4-6",
-            max_tokens=6000,
+            max_tokens=32000,
             system=_CONTINUATION_SYSTEM,
             messages=[{"role": "user", "content": (
                 "以下のHTMLが途中で切れています。末尾から続くHTMLのみを出力してください。"
                 "最後は開いているタグを閉じて終了すること。\n\n"
-                f"【末尾】\n{text[-1500:]}"
+                f"【末尾】\n{text[-4000:]}"
             )}],
         )
-        text += _strip_continuation(cont_resp.content[0].text)
+        chunk = _strip_continuation(cont_resp.content[0].text)
+        print(f"[market_fragment] cont{_cont_attempt+1} stop={cont_resp.stop_reason} len={len(chunk)}")
+        text += chunk
+        response = cont_resp
 
     # Clean the fragment: strip ALL HTML document boilerplate from ANYWHERE in the text.
     # The AI sometimes generates a mini-document per sub-section (each with its own
@@ -409,10 +418,10 @@ def _run_simple(
     system: str,
     user_msg: str,
     model: str = "claude-haiku-4-5-20251001",
-    max_tokens: int = 16000,
+    max_tokens: int = 32000,
     complete_fn=None,
     continuation_hint: str = "",
-    max_continuations: int = 4,
+    max_continuations: int = 8,
 ) -> str:
     """Run Claude without tools. Auto-continues up to max_continuations times if output is truncated.
 
@@ -584,13 +593,13 @@ def _approved_context(approved: Dict[str, str]) -> str:
     parts = []
     for key, html in approved.items():
         label = SUB_PHASE_LABELS.get(key, key)
-        parts.append(f"### {label}\n{html[:3000]}")
+        parts.append(f"### {label}\n{html}")
     return "\n\n".join(parts)
 
 
 def _edit_block(previous_output: Optional[str], edit_instruction: Optional[str]) -> str:
     if previous_output and edit_instruction:
-        return f"\n## 修正指示\n{edit_instruction}\n\n## 前回の出力（修正対象の抜粋）\n{previous_output[:3000]}\n\n上記の修正指示に従ってHTMLを修正してください。"
+        return f"\n## 修正指示\n{edit_instruction}\n\n## 前回の出力（修正対象）\n{previous_output}\n\n上記の修正指示に従ってHTMLを修正してください。"
     return ""
 
 
@@ -718,7 +727,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         f"{industry} 市場シェア 競合 比較",
     ]
     if competitors:
-        for comp in competitors.replace("、", ",").replace("・", ",").split(",")[:4]:
+        for comp in competitors.replace("、", ",").replace("・", ",").split(","):
             comp = comp.strip()
             if comp:
                 queries.append(f"{comp} 機能 料金 強み 弱み 評判 公式サイト")
@@ -727,7 +736,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
     queries.append(f"{industry} グローバル 日本 市場比較")
 
     search_section = ""
-    for q in queries[:10]:
+    for q in queries:  # no cap — run all queries
         result = _search(q)
         search_section += f"\n### 検索: {q}\n{result}\n"
 
@@ -741,11 +750,11 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
             f"## プロジェクト情報\n{project_info}\n\n"
             f"## 追加深掘り調査リクエスト\n{deep_dive_request}\n\n"
             f"## 追加調査結果\n{extra_results}\n\n"
-            f"## 既存レポート（追記対象）\n{previous_output[:4000]}\n\n"
+            f"## 既存レポート（追記対象）\n{previous_output}\n\n"
             "既存HTMLの末尾に「追加深掘り調査結果」セクションを追記した完全なHTMLを返してください。"
             "必ず<!DOCTYPE html>から始め、⚠補足などの注釈は一切含めないこと。"
         )
-        return _inject_charts(_run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000))
+        return _inject_charts(_run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000))
 
     # ── Multi-section generation ─────────────────────────────────────────────────
     # Each section is a separate focused API call.
@@ -764,7 +773,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "- CAGR（年平均成長率）\n"
         "- 主要成長セグメント\n"
         "市場規模の推移・予測は必ず <table class=\"barchart-data\" summary=\"タイトル\"> 形式のバーチャートで表示すること。",
-        max_tokens=8000,
+        max_tokens=32000,
     )
 
     # Section 2: Global vs Japan comparison
@@ -778,7 +787,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "- 地域別市場シェア（北米・欧州・アジア等）\n"
         "- 日本市場の特性・課題・機会\n"
         "比較データは <table class=\"barchart-data\" summary=\"タイトル\"> 形式のバーチャートで表示すること。",
-        max_tokens=6000,
+        max_tokens=32000,
     )
 
     # Section 3: Competitor analysis (most token-intensive)
@@ -797,11 +806,10 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "5. 不足機能 / 追加提案候補\n"
         "6. 外部連携システム一覧（連携先・本体→連携先のデータ・連携先→本体のデータ・目的）\n"
         "グローバル競合と国内競合を分けてサブセクション化すること。",
-        max_tokens=16000,
+        max_tokens=64000,
     )
 
     # Sections 4, 5, 6: each as a SEPARATE API call so no section is starved of tokens.
-    # (A single call for all 3 reliably ran out of tokens after section 4.)
     s4 = _gen_market_fragment(
         ctx +
         "## 指示\n"
@@ -812,7 +820,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "- 技術革新・DX・AI活用動向（具体的な技術名・導入事例）\n"
         "- 将来展望（3〜5年後の予測）\n"
         "数値データがあれば <table class=\"barchart-data\" summary=\"タイトル\"> 形式で表示すること。",
-        max_tokens=8000,
+        max_tokens=32000,
     )
 
     s5 = _gen_market_fragment(
@@ -825,7 +833,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "- 技術的障壁（開発難易度・必要技術）\n"
         "- 競合強度・市場リスク（定量的に）\n"
         "- リスクマトリクス（発生確率×影響度）\n",
-        max_tokens=8000,
+        max_tokens=32000,
     )
 
     s6 = _gen_market_fragment(
@@ -838,7 +846,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "- 成長ドライバー（技術・規制・社会的要因）\n"
         "- 差別化ポイント・推奨アクション\n"
         "数値データがあれば <table class=\"barchart-data\" summary=\"タイトル\"> 形式で表示すること。",
-        max_tokens=8000,
+        max_tokens=32000,
     )
 
     print(f"[why_market] s1  len={len(s1)}  preview={s1[:120]!r}")

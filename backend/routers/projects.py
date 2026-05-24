@@ -276,6 +276,6 @@ def _combine_sub_phase_html(approved: dict) -> str:
     for key in SUB_PHASES:
         if key in approved:
             label = SUB_PHASE_LABELS.get(key, key)
-            html = approved[key][:4000]  # cap each section to stay within token limits
+            html = approved[key]
             parts.append(f'<section class="sub-phase"><h2>{label}</h2>{html}</section>')
     return "\n\n".join(parts)
