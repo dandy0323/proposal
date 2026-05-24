@@ -210,7 +210,7 @@ def _inject_charts(html: str) -> str:
     # Remove empty AI-generated chart placeholder divs.
     # After script/canvas removal the divs are left empty — these produce blank white boxes.
     # Run multiple passes to handle nested empty containers.
-    for _ in range(4):
+    for _ in range(6):
         before = html
         # Div with explicit height/min-height containing only whitespace or comments
         html = re.sub(
@@ -221,7 +221,28 @@ def _inject_charts(html: str) -> str:
         )
         # Div with chart-related class/id names that are now empty
         html = re.sub(
-            r'<div\b[^>]*(?:class|id)="[^"]*chart[^"]*"[^>]*>\s*(?:<!--.*?-->\s*)*</div>',
+            r'<div\b[^>]*(?:class|id)=["\'][^"\']*chart[^"\']*["\'][^>]*>\s*(?:<!--.*?-->\s*)*</div>',
+            '',
+            html,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        # Any completely empty div (only whitespace/comments) — catches stripped chart wrappers
+        html = re.sub(
+            r'<div\b[^>]*>\s*(?:<!--.*?-->\s*)*</div>',
+            '',
+            html,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if html == before:
+            break
+
+    # Remove chart containers that have ONLY a heading child and nothing else
+    # (these are AI-generated chart wrappers: title heading + stripped chart content)
+    # Pattern: div containing only h3/h4/p/strong text with no siblings
+    for _ in range(3):
+        before = html
+        html = re.sub(
+            r'<div\b[^>]*>\s*<(?:h[2-6]|p|strong)\b[^>]*>[^<]*</(?:h[2-6]|p|strong)>\s*</div>',
             '',
             html,
             flags=re.IGNORECASE | re.DOTALL,
@@ -307,24 +328,32 @@ _CONTINUATION_SYSTEM = (
 _SECTION_FRAGMENT_SYSTEM = """あなたはHTMLコンテンツ生成ツールです。
 指定されたセクションの本文HTMLのみを出力してください。
 
-【絶対禁止 — 違反すると出力が破壊される】
-- <!DOCTYPE>/<html>/<head>/<body>/<script>タグの出力（<script>タグは完全禁止）
-- 謝罪文・説明文・注釈・⚠マーク・Markdown・コードフェンス
-- canvas要素・SVGグラフ・Chart.js・Plotly・D3.js・any JavaScriptライブラリ
-- 空のdiv・min-height/height付きの空コンテナ（chart placeholder禁止）
-- JavaScriptコードを1行も書かないこと
+【絶対禁止】
+- <script>タグ・JavaScriptコード（1行も書かないこと）
+- <canvas>要素・SVGグラフ
+- Chart.js・Plotly・D3.js・ECharts等のJSライブラリ使用
+- <!DOCTYPE>/<html>/<head>/<body>タグ
+- 謝罪文・説明文・⚠マーク・Markdown・コードフェンス
 
-【グラフ・チャートの出力方法（唯一の正しい方法）】
-数値データがある箇所は必ず以下のHTMLテーブル形式のみで表示すること。
-サーバーが自動的に横棒グラフに変換する。
-<table class="barchart-data" summary="グラフタイトル">
-  <tr><td>ラベル</td><td>数値のみ（単位なし）</td></tr>
+【重要：上記を違反した場合の動作】
+サーバーは<canvas>と<script>を自動削除します。
+その結果、chart用に作ったdivだけが残り、グラフエリアが「白い空白」になります。
+絶対に使用しないでください。
+
+【数値データの表示方法（これだけ使うこと）】
+数値比較・推移・ランキングのデータは必ず次の形式で出力してください。
+サーバーが自動的に横棒グラフに変換して表示します。
+
+<table class="barchart-data" summary="グラフのタイトル">
+  <tr><td>ラベル名</td><td>数値（単位なし・数字のみ）</td></tr>
+  <tr><td>ラベル名</td><td>数値</td></tr>
 </table>
-この形式以外でグラフを表示しようとしないこと。divもcanvasもscriptも不要。
+
+この形式だけを使い、canvas・div・scriptは一切書かないこと。
 
 【出力形式】
 - 指定された<h2>タグから始めること
-- Tailwind CSSクラスを使って見やすくレイアウトすること
+- Tailwind CSSクラスで見やすくレイアウトすること
 - 数値・事実・根拠を含め詳細に記述すること
 """
 
