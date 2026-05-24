@@ -70,7 +70,10 @@ TOOLS = [
 
 
 def _get_anthropic():
-    return anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+    return anthropic.Anthropic(
+        api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
+        timeout=1800.0,  # 30 minutes — large token responses can take many minutes
+    )
 
 
 def _get_tavily():
@@ -92,35 +95,44 @@ def _search(query: str) -> str:
 
 
 def _bars_to_html(bars: list, title: str) -> str:
-    """Convert a list of (label, value) pairs to horizontal bar chart HTML."""
+    """Convert a list of (label, value) pairs to a horizontal bar-chart HTML table.
+
+    Uses CSS linear-gradient on table cells so there are NO empty div elements.
+    The iframe cleanup in project.js removes childless + textless elements; using
+    table cells with gradient backgrounds and numeric text avoids that entirely.
+    """
     if not bars:
         return ''
     max_val = max(v for _, v in bars)
     if max_val == 0:
         return ''
-    bar_rows = []
+    rows = []
     for label, val in bars:
         pct = max(2, round(val / max_val * 100))
         display = f'{int(val):,}' if val == int(val) else f'{val:,.1f}'
-        bar_rows.append(
-            f'<div style="margin-bottom:10px;">'
-            f'<div style="display:flex;justify-content:space-between;margin-bottom:3px;">'
-            f'<span style="font-size:12px;color:#64748b;">{label}</span>'
-            f'<span style="font-size:12px;font-weight:700;color:#1e40af;">{display}</span>'
-            f'</div>'
-            f'<div style="height:20px;background:#e2e8f0;border-radius:4px;overflow:hidden;">'
-            # The inner bar div MUST contain a non-empty text node.
-            # The iframe cleanup in project.js removes any element with no children
-            # AND no text content — which would erase the colored bar, leaving blank charts.
-            f'<div style="height:20px;width:{pct}%;background:#3b82f6;border-radius:4px;'
-            f'font-size:1px;line-height:20px;color:transparent;">.</div>'
-            f'</div></div>'
+        rows.append(
+            f'<tr>'
+            f'<td style="padding:4px 8px 4px 0;font-size:12px;color:#64748b;'
+            f'white-space:nowrap;vertical-align:middle;width:35%;">{label}</td>'
+            f'<td style="padding:4px 8px;vertical-align:middle;">'
+            f'<div style="height:18px;border-radius:3px;'
+            f'background:linear-gradient(to right,#3b82f6 {pct}%,#e2e8f0 {pct}%);'
+            f'font-size:1px;color:transparent;">.</div></td>'
+            f'<td style="padding:4px 0 4px 8px;font-size:12px;font-weight:700;'
+            f'color:#1e40af;white-space:nowrap;vertical-align:middle;width:15%;">{display}</td>'
+            f'</tr>'
         )
+    title_row = (
+        f'<tr><th colspan="3" style="text-align:left;font-size:13px;font-weight:600;'
+        f'color:#334155;padding:0 0 8px 0;border:none;background:none;">{title}</th></tr>'
+        if title else ''
+    )
     return (
-        '<div style="margin:1.5rem 0;padding:16px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">'
-        f'<p style="font-size:13px;font-weight:600;color:#334155;margin:0 0 12px 0;">{title}</p>'
-        + ''.join(bar_rows) +
-        '</div>'
+        '<div style="margin:1.5rem 0;padding:16px;background:#f8fafc;'
+        'border-radius:8px;border:1px solid #e2e8f0;overflow:hidden;">'
+        f'<table style="width:100%;border-collapse:collapse;">'
+        f'<tbody>{title_row}{"".join(rows)}</tbody>'
+        f'</table></div>'
     )
 
 
@@ -316,38 +328,50 @@ _SECTION_FRAGMENT_SYSTEM = """あなたはHTMLコンテンツ生成ツールで�
 """
 
 
-def _gen_market_fragment(user_content: str, max_tokens: int = 32000) -> str:
+def _gen_market_fragment(user_content: str, max_tokens: int = 16000) -> str:
     """Generate one HTML body section fragment for the market analysis report.
 
     Uses a dedicated fresh API call per section so the AI can't skip or truncate
     sections due to running out of context. If the section hits max_tokens,
-    continuation is attempted automatically (up to 3 times).
+    continuation is attempted automatically (up to 5 times at 16000 tokens each).
+    Exceptions are caught and logged so one failing section doesn't abort the whole report.
     """
     client = _get_anthropic()
-    response = _create_with_retry(
-        client,
-        model="claude-sonnet-4-6",
-        max_tokens=max_tokens,
-        system=_SECTION_FRAGMENT_SYSTEM,
-        messages=[{"role": "user", "content": user_content}],
-    )
+    try:
+        response = _create_with_retry(
+            client,
+            model="claude-sonnet-4-6",
+            max_tokens=max_tokens,
+            system=_SECTION_FRAGMENT_SYSTEM,
+            messages=[{"role": "user", "content": user_content}],
+        )
+    except Exception as e:
+        import traceback
+        print(f"[market_fragment] ERROR on initial call: {e}")
+        traceback.print_exc()
+        return ''
+
     text = response.content[0].text
     print(f"[market_fragment] stop={response.stop_reason} len={len(text)}")
 
-    for _cont_attempt in range(3):
+    for _cont_attempt in range(5):
         if response.stop_reason != "max_tokens":
             break
-        cont_resp = _create_with_retry(
-            client,
-            model="claude-sonnet-4-6",
-            max_tokens=32000,
-            system=_CONTINUATION_SYSTEM,
-            messages=[{"role": "user", "content": (
-                "以下のHTMLが途中で切れています。末尾から続くHTMLのみを出力してください。"
-                "最後は開いているタグを閉じて終了すること。\n\n"
-                f"【末尾】\n{text[-4000:]}"
-            )}],
-        )
+        try:
+            cont_resp = _create_with_retry(
+                client,
+                model="claude-sonnet-4-6",
+                max_tokens=16000,
+                system=_CONTINUATION_SYSTEM,
+                messages=[{"role": "user", "content": (
+                    "以下のHTMLが途中で切れています。末尾から続くHTMLのみを出力してください。"
+                    "最後は開いているタグを閉じて終了すること。\n\n"
+                    f"【末尾】\n{text[-4000:]}"
+                )}],
+            )
+        except Exception as e:
+            print(f"[market_fragment] ERROR on cont{_cont_attempt+1}: {e}")
+            break
         chunk = _strip_continuation(cont_resp.content[0].text)
         print(f"[market_fragment] cont{_cont_attempt+1} stop={cont_resp.stop_reason} len={len(chunk)}")
         text += chunk
@@ -418,7 +442,7 @@ def _run_simple(
     system: str,
     user_msg: str,
     model: str = "claude-haiku-4-5-20251001",
-    max_tokens: int = 32000,
+    max_tokens: int = 16000,
     complete_fn=None,
     continuation_hint: str = "",
     max_continuations: int = 8,
@@ -754,7 +778,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
             "既存HTMLの末尾に「追加深掘り調査結果」セクションを追記した完全なHTMLを返してください。"
             "必ず<!DOCTYPE html>から始め、⚠補足などの注釈は一切含めないこと。"
         )
-        return _inject_charts(_run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000))
+        return _inject_charts(_run_simple(system, user, model="claude-sonnet-4-6", max_tokens=16000))
 
     # ── Multi-section generation ─────────────────────────────────────────────────
     # Each section is a separate focused API call.
@@ -773,7 +797,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "- CAGR（年平均成長率）\n"
         "- 主要成長セグメント\n"
         "市場規模の推移・予測は必ず <table class=\"barchart-data\" summary=\"タイトル\"> 形式のバーチャートで表示すること。",
-        max_tokens=32000,
+        max_tokens=16000,
     )
 
     # Section 2: Global vs Japan comparison
@@ -787,7 +811,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "- 地域別市場シェア（北米・欧州・アジア等）\n"
         "- 日本市場の特性・課題・機会\n"
         "比較データは <table class=\"barchart-data\" summary=\"タイトル\"> 形式のバーチャートで表示すること。",
-        max_tokens=32000,
+        max_tokens=16000,
     )
 
     # Section 3: Competitor analysis (most token-intensive)
@@ -806,7 +830,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "5. 不足機能 / 追加提案候補\n"
         "6. 外部連携システム一覧（連携先・本体→連携先のデータ・連携先→本体のデータ・目的）\n"
         "グローバル競合と国内競合を分けてサブセクション化すること。",
-        max_tokens=64000,
+        max_tokens=16000,
     )
 
     # Sections 4, 5, 6: each as a SEPARATE API call so no section is starved of tokens.
@@ -820,7 +844,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "- 技術革新・DX・AI活用動向（具体的な技術名・導入事例）\n"
         "- 将来展望（3〜5年後の予測）\n"
         "数値データがあれば <table class=\"barchart-data\" summary=\"タイトル\"> 形式で表示すること。",
-        max_tokens=32000,
+        max_tokens=16000,
     )
 
     s5 = _gen_market_fragment(
@@ -833,7 +857,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "- 技術的障壁（開発難易度・必要技術）\n"
         "- 競合強度・市場リスク（定量的に）\n"
         "- リスクマトリクス（発生確率×影響度）\n",
-        max_tokens=32000,
+        max_tokens=16000,
     )
 
     s6 = _gen_market_fragment(
@@ -846,7 +870,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "- 成長ドライバー（技術・規制・社会的要因）\n"
         "- 差別化ポイント・推奨アクション\n"
         "数値データがあれば <table class=\"barchart-data\" summary=\"タイトル\"> 形式で表示すること。",
-        max_tokens=32000,
+        max_tokens=16000,
     )
 
     print(f"[why_market] s1  len={len(s1)}  preview={s1[:120]!r}")
