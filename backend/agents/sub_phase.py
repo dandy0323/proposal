@@ -236,20 +236,6 @@ def _inject_charts(html: str) -> str:
         if html == before:
             break
 
-    # Remove chart containers that have ONLY a heading child and nothing else
-    # (these are AI-generated chart wrappers: title heading + stripped chart content)
-    # Pattern: div containing only h3/h4/p/strong text with no siblings
-    for _ in range(3):
-        before = html
-        html = re.sub(
-            r'<div\b[^>]*>\s*<(?:h[2-6]|p|strong)\b[^>]*>[^<]*</(?:h[2-6]|p|strong)>\s*</div>',
-            '',
-            html,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-        if html == before:
-            break
-
     return html
 
 
