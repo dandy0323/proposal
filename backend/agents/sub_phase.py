@@ -297,9 +297,10 @@ def _run_with_tools(system: str, user_msg: str) -> str:
 
 
 _CONTINUATION_SYSTEM = (
-    "あなたはHTMLコード補完専門AIです。渡されたHTMLの末尾から続くHTMLコードのみを出力してください。\n"
+    "あなたはHTMLレポート生成AIです。途中で切れたHTMLの続きを生成してください。\n"
+    "【最重要】欠落しているすべてのコンテンツ・データ・分析内容を完全に生成すること。タグを閉じるだけで終わることは絶対禁止。\n"
     "【絶対禁止】謝罪文・説明文・解説・Markdown・コードフェンス・<!DOCTYPE>/<html>/<head>/<body>タグの出力\n"
-    "【必須】HTMLタグのみ出力。最後は必ず</body></html>で終了。途中で諦めることは絶対禁止。"
+    "【必須】残りのすべてのセクション・コンテンツを省略なく詳細に出力してから、最後に</body></html>で終了。"
 )
 
 _SECTION_FRAGMENT_SYSTEM = """あなたはHTMLコンテンツ生成ツールです。
@@ -472,16 +473,18 @@ def _run_simple(
                 "- 全欠落セクションを出力後、必ず</body></html>で終了"
             )
         else:
-            tail = accumulated[-1500:]
+            tail = accumulated[-4000:]
             hint_block = f"\n{continuation_hint}\n" if continuation_hint else ""
             cont_content = (
-                f"以下のHTMLが途中で切れています。末尾の直後から続くHTMLコードのみを出力してください。{hint_block}\n\n"
-                f"【現在の末尾】\n{tail}\n\n"
+                f"以下のHTMLが途中で切れています。末尾の直後から続くHTMLコードを出力してください。{hint_block}\n\n"
+                f"【現在の末尾（最後の4000文字）】\n{tail}\n\n"
                 "【絶対ルール】\n"
                 "- 上記末尾の直後から続くHTMLのみ出力（冒頭の重複は禁止）\n"
                 "- 謝罪文・説明文・Markdownは一切出力禁止\n"
                 "- <!DOCTYPE>/<html>/<head>/<body>タグは出力不要\n"
+                "- 途中で切れているセル・リスト・テーブルの内容も省略せず完全に生成すること\n"
                 "- 残りの全セクションを省略せず完全に出力すること\n"
+                "- タグを閉じるだけで終わることは絶対禁止\n"
                 "- 最後は必ず</body></html>で終了"
             )
 
