@@ -232,6 +232,10 @@ def _inject_charts(html: str) -> str:
 
 def _create_with_retry(client, **kwargs):
     """API call with retry on 429 rate limit errors."""
+    # Enable extended output beta when max_tokens exceeds standard limit
+    if kwargs.get("max_tokens", 0) > 16000:
+        existing = kwargs.pop("extra_headers", {})
+        kwargs["extra_headers"] = {"anthropic-beta": "output-128k-2025-02-19", **existing}
     for attempt in range(3):
         try:
             return client.messages.create(**kwargs)
@@ -362,7 +366,7 @@ def _gen_market_fragment(user_content: str, max_tokens: int = 16000) -> str:
             cont_resp = _create_with_retry(
                 client,
                 model="claude-sonnet-4-6",
-                max_tokens=32000,
+                max_tokens=64000,
                 system=_CONTINUATION_SYSTEM,
                 messages=[{"role": "user", "content": (
                     "以下のHTMLが途中で切れています。末尾から続くHTMLのみを出力してください。"
@@ -434,7 +438,7 @@ def _run_simple(
     system: str,
     user_msg: str,
     model: str = "claude-sonnet-4-6",
-    max_tokens: int = 32000,
+    max_tokens: int = 64000,
     complete_fn=None,
     continuation_hint: str = "",
     max_continuations: int = 8,
@@ -727,7 +731,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
             "既存HTMLの末尾に「追加深掘り調査結果」セクションを追記した完全なHTMLを返してください。"
             "必ず<!DOCTYPE html>から始め、⚠補足などの注釈は一切含めないこと。"
         )
-        return _inject_charts(_run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000))
+        return _inject_charts(_run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000))
 
     ctx = f"## プロジェクト情報\n{project_info}\n\n## Web調査結果\n{search_section}\n\n"
 
@@ -741,7 +745,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "- CAGR（年平均成長率）\n"
         "- 主要成長セグメント\n"
         "市場規模の推移・予測は必ず <table class=\"barchart-data\" summary=\"タイトル\"> 形式のバーチャートで表示すること。",
-        max_tokens=32000,
+        max_tokens=64000,
     )
 
     s2 = _gen_market_fragment(
@@ -754,7 +758,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "- 地域別市場シェア（北米・欧州・アジア等）\n"
         "- 日本市場の特性・課題・機会\n"
         "比較データは <table class=\"barchart-data\" summary=\"タイトル\"> 形式のバーチャートで表示すること。",
-        max_tokens=32000,
+        max_tokens=64000,
     )
 
     comp_list = competitors or "（競合情報未記入）"
@@ -772,7 +776,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "5. 不足機能 / 追加提案候補\n"
         "6. 外部連携システム一覧（連携先・本体→連携先のデータ・連携先→本体のデータ・目的）\n"
         "グローバル競合と国内競合を分けてサブセクション化すること。",
-        max_tokens=32000,
+        max_tokens=64000,
     )
 
     s4 = _gen_market_fragment(
@@ -785,7 +789,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "- 技術革新・DX・AI活用動向（具体的な技術名・導入事例）\n"
         "- 将来展望（3〜5年後の予測）\n"
         "数値データがあれば <table class=\"barchart-data\" summary=\"タイトル\"> 形式で表示すること。",
-        max_tokens=32000,
+        max_tokens=64000,
     )
 
     s5 = _gen_market_fragment(
@@ -798,7 +802,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "- 技術的障壁（開発難易度・必要技術）\n"
         "- 競合強度・市場リスク（定量的に）\n"
         "- リスクマトリクス（発生確率×影響度）\n",
-        max_tokens=32000,
+        max_tokens=64000,
     )
 
     s6 = _gen_market_fragment(
@@ -811,7 +815,7 @@ def _why_market(form_data, approved, previous_output, edit_instruction, deep_div
         "- 成長ドライバー（技術・規制・社会的要因）\n"
         "- 差別化ポイント・推奨アクション\n"
         "数値データがあれば <table class=\"barchart-data\" summary=\"タイトル\"> 形式で表示すること。",
-        max_tokens=32000,
+        max_tokens=64000,
     )
 
     import pathlib
@@ -1004,7 +1008,7 @@ def _how_feasibility(form_data, approved, previous_output, edit_instruction):
 
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み分析結果\n{ctx}\n\n## Web調査結果\n{search_section}{_edit_block(previous_output, edit_instruction)}\n\n技術実現可能性レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
-    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000)
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000)
 
 
 def _how_integration(form_data, approved, previous_output, edit_instruction):
@@ -1093,7 +1097,7 @@ def _req_business(form_data, approved, previous_output, edit_instruction):
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n事業・業務要件の要件定義レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
-    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000)
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000)
 
 
 def _req_stakeholders(form_data, approved, previous_output, edit_instruction):
@@ -1110,7 +1114,7 @@ def _req_stakeholders(form_data, approved, previous_output, edit_instruction):
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nステークホルダー・利用者要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
-    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000)
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000)
 
 
 def _req_functional(form_data, approved, previous_output, edit_instruction):
@@ -1129,7 +1133,7 @@ def _req_functional(form_data, approved, previous_output, edit_instruction):
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n機能要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
-    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000)
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000)
 
 
 def _req_ui_ux(form_data, approved, previous_output, edit_instruction):
@@ -1147,7 +1151,7 @@ def _req_ui_ux(form_data, approved, previous_output, edit_instruction):
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n画面・UI/UX要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
-    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000)
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000)
 
 
 def _req_data(form_data, approved, previous_output, edit_instruction):
@@ -1165,7 +1169,7 @@ def _req_data(form_data, approved, previous_output, edit_instruction):
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nデータ・情報設計要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
-    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000)
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000)
 
 
 def _req_integration(form_data, approved, previous_output, edit_instruction):
@@ -1182,7 +1186,7 @@ def _req_integration(form_data, approved, previous_output, edit_instruction):
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n外部連携・API要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
-    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000)
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000)
 
 
 def _req_nonfunc(form_data, approved, previous_output, edit_instruction):
@@ -1200,7 +1204,7 @@ def _req_nonfunc(form_data, approved, previous_output, edit_instruction):
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n非機能要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
-    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000)
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000)
 
 
 def _req_security(form_data, approved, previous_output, edit_instruction):
@@ -1218,7 +1222,7 @@ def _req_security(form_data, approved, previous_output, edit_instruction):
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nセキュリティ・法務・コンプライアンス要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
-    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000)
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000)
 
 
 def _req_operation(form_data, approved, previous_output, edit_instruction):
@@ -1235,7 +1239,7 @@ def _req_operation(form_data, approved, previous_output, edit_instruction):
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\n運用・保守要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
-    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000)
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000)
 
 
 def _req_testing(form_data, approved, previous_output, edit_instruction):
@@ -1252,7 +1256,7 @@ def _req_testing(form_data, approved, previous_output, edit_instruction):
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nテスト・受入基準レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
-    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000)
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000)
 
 
 def _req_release(form_data, approved, previous_output, edit_instruction):
@@ -1268,7 +1272,7 @@ def _req_release(form_data, approved, previous_output, edit_instruction):
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nリリース・移行要件レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
-    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000)
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000)
 
 
 def _req_management(form_data, approved, previous_output, edit_instruction):
@@ -1285,7 +1289,7 @@ def _req_management(form_data, approved, previous_output, edit_instruction):
 {HTML_RULES}"""
     ctx = _approved_context(approved)
     user = f"## プロジェクト情報\n{_form_summary(form_data)}\n\n## 承認済み企画フェーズ結果\n{ctx}{_edit_block(previous_output, edit_instruction)}\n\nプロジェクト管理・合意形成レポートHTMLを<!DOCTYPE html>から始めて作成してください。"
-    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=32000)
+    return _run_simple(system, user, model="claude-sonnet-4-6", max_tokens=64000)
 
 
 # ── Sub-phase chat (any sub-phase) ────────────────────────────────────────────
