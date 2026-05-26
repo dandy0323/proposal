@@ -591,13 +591,18 @@ def _form_summary(form_data: dict) -> str:
     return "\n".join(lines)
 
 
-def _approved_context(approved: Dict[str, str]) -> str:
+def _approved_context(approved: Dict[str, str], max_chars_per_entry: int = 2000) -> str:
     if not approved:
         return ""
     parts = []
     for key, html in approved.items():
         label = SUB_PHASE_LABELS.get(key, key)
-        parts.append(f"### {label}\n{html}")
+        # Strip HTML tags and collapse whitespace for compact context
+        text = re.sub(r'<[^>]+>', ' ', html)
+        text = re.sub(r'\s+', ' ', text).strip()
+        if len(text) > max_chars_per_entry:
+            text = text[:max_chars_per_entry] + "…（以下省略）"
+        parts.append(f"### {label}\n{text}")
     return "\n\n".join(parts)
 
 
