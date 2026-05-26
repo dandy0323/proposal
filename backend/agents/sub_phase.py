@@ -59,6 +59,13 @@ HTML_RULES = """
   形式: <a href="URL" target="_blank" class="text-xs text-blue-500 underline ml-1">出典</a>
 - Web検索結果に含まれるURLを優先して使用する
 - 推定・仮説の場合は「（※推定）」と付記する
+
+## 出力完結性ルール（最重要・違反禁止）
+- 必ず</body></html>まで含む完全なHTMLを1回の出力で完結させること
+- テーブルは1つあたり最大8行に絞ること（行数を絞って完結させることを優先）
+- 各セクションのテキストは要点のみ・箇条書きは1項目2行以内
+- 「詳細は省略」「続きは次章で」等の先送り表現は禁止
+- 装飾より完結性を優先：全セクションを出力し終わってから</body></html>で終了
 """
 
 TOOLS = [
@@ -445,9 +452,14 @@ def _run_simple(
 ) -> str:
     client = _get_anthropic()
 
+    # Prepend completeness directive so the model finishes in one shot
+    full_user_msg = (
+        "【重要】必ず</body></html>まで含む完全なHTMLを1回で出力すること。途中で切れることは絶対禁止。\n\n"
+        + user_msg
+    )
     response = _create_with_retry(
         client, model=model, max_tokens=max_tokens, system=system,
-        messages=[{"role": "user", "content": user_msg}],
+        messages=[{"role": "user", "content": full_user_msg}],
     )
     accumulated = _strip(response.content[0].text)
     print(f"[run_simple] initial: stop={response.stop_reason} len={len(accumulated)} model={model}")
