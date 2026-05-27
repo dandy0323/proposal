@@ -117,6 +117,7 @@ const STATUS_LABELS = {
   rejected: '差し戻し',
   edit_requested: '修正依頼中',
   superseded: '更新済み',
+  skipped: 'スキップ',
 };
 
 // ── State ──────────────────────────────────────────────────────────────────────
@@ -231,17 +232,19 @@ function renderSubSidebar() {
           case 'pending':       icon = '●'; iconCls = 'text-blue-500';  break;
           case 'rejected':      icon = '✗'; iconCls = 'text-red-500';   break;
           case 'edit_requested':icon = '↺'; iconCls = 'text-orange-500';break;
+          case 'skipped':       icon = '–'; iconCls = 'text-gray-400';  break;
         }
       } else if (isCurrent) {
         icon = '→'; iconCls = 'text-blue-400';
       }
 
+      const isSkipped = output && output.status === 'skipped';
       const bgCls = isSelected
         ? 'bg-blue-50 border-l-2 border-blue-500'
         : isCurrent && !isSelected
         ? 'bg-yellow-50 border-l-2 border-yellow-400'
         : isClickable ? 'hover:bg-gray-100' : '';
-      const textCls = isFuture && !output ? 'text-gray-400' : 'text-gray-700';
+      const textCls = isSkipped ? 'text-gray-400 line-through' : isFuture && !output ? 'text-gray-400' : 'text-gray-700';
       const cursor = isClickable ? 'cursor-pointer' : 'cursor-default';
 
       const onclick = isClickable ? `onclick="selectSubPhase('${key}')"` : '';
@@ -333,6 +336,11 @@ async function selectSubPhase(key) {
   } else {
     runArea.classList.add('hidden');
   }
+
+  // Skip button: show only on current active sub-phase (and project not done), hide if already skipped
+  const btnSkip = document.getElementById('btn-sub-skip');
+  const alreadySkipped = output && output.status === 'skipped';
+  btnSkip.classList.toggle('hidden', !isCurrentActive || project.current_phase === 'done' || alreadySkipped);
 
   // Reset spinner/status
   document.getElementById('sub-spinner').classList.add('hidden');
@@ -539,6 +547,34 @@ function setChatRunning(flag) {
   document.getElementById('chat-spinner').classList.toggle('hidden', !flag);
 }
 
+// ── Skip sub-phase ─────────────────────────────────────────────────────────────
+
+async function skipSubPhase() {
+  if (!confirm(`「${SUB_PHASE_LABELS[selectedSubPhase] || selectedSubPhase}」をスキップしますか？\nスキップしたフェーズは後から実行することもできます。`)) return;
+
+  const res = await fetch('/api/projects/skip-sub-phase', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_id: projectId, sub_phase_key: selectedSubPhase }),
+  });
+  if (!res.ok) { alert('スキップに失敗しました'); return; }
+  const data = await res.json();
+
+  subPhaseOutputs[selectedSubPhase] = { status: 'skipped', sub_phase_key: selectedSubPhase };
+  project = await (await fetch(`/api/projects/${projectId}`)).json();
+  renderStepper();
+
+  if (project.current_phase !== 'planning') {
+    document.getElementById('sub-phase-panel').classList.add('hidden');
+    document.getElementById('phase-panel').classList.remove('hidden');
+    await renderPhasePanel();
+  } else {
+    const nextKey = (data.next_sub_phase && data.next_sub_phase !== 'done') ? data.next_sub_phase : project.current_sub_phase;
+    renderSubSidebar();
+    selectSubPhase(nextKey);
+  }
+}
+
 // ── Regular phase panel (factcheck / proposal_outline / mockup) ────────────────
 
 async function renderDonePanel() {
@@ -677,6 +713,7 @@ async function submitReview(action, comment = '', editInstruction = '') {
 
 // Sub-phase controls
 document.getElementById('btn-sub-run').addEventListener('click', () => runSubPhase(selectedSubPhase));
+document.getElementById('btn-sub-skip').addEventListener('click', () => skipSubPhase());
 document.getElementById('btn-version-older').addEventListener('click', () => navigateSubVersion(1));
 document.getElementById('btn-version-newer').addEventListener('click', () => navigateSubVersion(-1));
 

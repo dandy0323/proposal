@@ -66,6 +66,11 @@ class SubPhaseChatRequest(BaseModel):
     append_to_report: bool = False
 
 
+class SkipSubPhaseRequest(BaseModel):
+    project_id: int
+    sub_phase_key: str
+
+
 @router.get("")
 def list_projects():
     return db.list_projects()
@@ -205,6 +210,17 @@ async def deep_dive(req: DeepDiveRequest):
         raise HTTPException(status_code=500, detail=str(e))
     output_id = db.save_sub_phase_output(req.project_id, key, html)
     return {"output_id": output_id, "html": html}
+
+
+@router.post("/skip-sub-phase")
+def skip_sub_phase(req: SkipSubPhaseRequest):
+    project = db.get_project(req.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if project.get("current_sub_phase") != req.sub_phase_key:
+        raise HTTPException(status_code=400, detail="Only the current active sub-phase can be skipped")
+    next_key = db.skip_sub_phase(req.project_id, req.sub_phase_key)
+    return {"status": "ok", "next_sub_phase": next_key}
 
 
 @router.post("/sub-phase-chat")

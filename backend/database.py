@@ -335,6 +335,27 @@ def approve_sub_phase_output(output_id: int) -> str:
     return next_key
 
 
+def skip_sub_phase(project_id: int, key: str) -> str:
+    """Mark sub-phase as skipped and advance to next. Returns next sub-phase key or 'done'."""
+    conn = get_conn()
+    now = datetime.now().isoformat()
+    conn.execute(
+        "INSERT INTO sub_phase_outputs (project_id, sub_phase_key, output_html, status, is_truncated, created_at, updated_at) VALUES (?, ?, NULL, 'skipped', 0, ?, ?)",
+        (project_id, key, now, now),
+    )
+    idx = SUB_PHASES.index(key) if key in SUB_PHASES else -1
+    next_key = "done"
+    if idx >= 0 and idx + 1 < len(SUB_PHASES):
+        next_key = SUB_PHASES[idx + 1]
+        conn.execute("UPDATE projects SET current_sub_phase = ?, updated_at = ? WHERE id = ?", (next_key, now, project_id))
+    else:
+        conn.execute("UPDATE projects SET current_phase = 'proposal_outline', current_sub_phase = 'why_background', updated_at = ? WHERE id = ?", (now, project_id))
+        next_key = "done"
+    conn.commit()
+    conn.close()
+    return next_key
+
+
 def reject_sub_phase_output(output_id: int, comment: str):
     conn = get_conn()
     now = datetime.now().isoformat()
