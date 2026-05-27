@@ -336,21 +336,26 @@ def approve_sub_phase_output(output_id: int) -> str:
 
 
 def skip_sub_phase(project_id: int, key: str) -> str:
-    """Mark sub-phase as skipped and advance to next. Returns next sub-phase key or 'done'."""
+    """Mark sub-phase as skipped and advance current_sub_phase if needed. Returns next key or 'done'."""
     conn = get_conn()
     now = datetime.now().isoformat()
+    # Insert skipped record (output_html is NULL for skipped)
     conn.execute(
         "INSERT INTO sub_phase_outputs (project_id, sub_phase_key, output_html, status, is_truncated, created_at, updated_at) VALUES (?, ?, NULL, 'skipped', 0, ?, ?)",
         (project_id, key, now, now),
     )
+    # Only advance current_sub_phase if this is the current active one
+    row = conn.execute("SELECT current_sub_phase FROM projects WHERE id = ?", (project_id,)).fetchone()
+    current = row["current_sub_phase"] if row else None
     idx = SUB_PHASES.index(key) if key in SUB_PHASES else -1
     next_key = "done"
     if idx >= 0 and idx + 1 < len(SUB_PHASES):
         next_key = SUB_PHASES[idx + 1]
-        conn.execute("UPDATE projects SET current_sub_phase = ?, updated_at = ? WHERE id = ?", (next_key, now, project_id))
-    else:
-        conn.execute("UPDATE projects SET current_phase = 'proposal_outline', current_sub_phase = 'why_background', updated_at = ? WHERE id = ?", (now, project_id))
-        next_key = "done"
+    if current == key:
+        if next_key != "done":
+            conn.execute("UPDATE projects SET current_sub_phase = ?, updated_at = ? WHERE id = ?", (next_key, now, project_id))
+        else:
+            conn.execute("UPDATE projects SET current_phase = 'proposal_outline', current_sub_phase = 'why_background', updated_at = ? WHERE id = ?", (now, project_id))
     conn.commit()
     conn.close()
     return next_key

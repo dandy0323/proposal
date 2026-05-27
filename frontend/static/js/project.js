@@ -557,7 +557,11 @@ async function skipSubPhase() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ project_id: projectId, sub_phase_key: selectedSubPhase }),
   });
-  if (!res.ok) { alert('スキップに失敗しました'); return; }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    alert('スキップに失敗しました: ' + (err.detail || res.status));
+    return;
+  }
   const data = await res.json();
 
   subPhaseOutputs[selectedSubPhase] = { status: 'skipped', sub_phase_key: selectedSubPhase };

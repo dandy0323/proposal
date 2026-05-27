@@ -217,8 +217,6 @@ def skip_sub_phase(req: SkipSubPhaseRequest):
     project = db.get_project(req.project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    if project.get("current_sub_phase") != req.sub_phase_key:
-        raise HTTPException(status_code=400, detail="Only the current active sub-phase can be skipped")
     next_key = db.skip_sub_phase(req.project_id, req.sub_phase_key)
     return {"status": "ok", "next_sub_phase": next_key}
 
