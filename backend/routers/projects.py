@@ -101,6 +101,15 @@ def reorder_projects(req: ReorderRequest):
     return {"status": "ok"}
 
 
+@router.post("/skip-sub-phase")
+def skip_sub_phase(req: SkipSubPhaseRequest):
+    project = db.get_project(req.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    next_key = db.skip_sub_phase(req.project_id, req.sub_phase_key)
+    return {"status": "ok", "next_sub_phase": next_key}
+
+
 @router.get("/{project_id}")
 def get_project(project_id: int):
     project = db.get_project(project_id)
@@ -210,15 +219,6 @@ async def deep_dive(req: DeepDiveRequest):
         raise HTTPException(status_code=500, detail=str(e))
     output_id = db.save_sub_phase_output(req.project_id, key, html)
     return {"output_id": output_id, "html": html}
-
-
-@router.post("/skip-sub-phase")
-def skip_sub_phase(req: SkipSubPhaseRequest):
-    project = db.get_project(req.project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    next_key = db.skip_sub_phase(req.project_id, req.sub_phase_key)
-    return {"status": "ok", "next_sub_phase": next_key}
 
 
 @router.post("/sub-phase-chat")
