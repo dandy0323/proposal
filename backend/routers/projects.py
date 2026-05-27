@@ -102,11 +102,21 @@ def reorder_projects(req: ReorderRequest):
 
 
 @router.post("/skip-sub-phase")
-def skip_sub_phase(req: SkipSubPhaseRequest):
+def skip_sub_phase_flat(req: SkipSubPhaseRequest):
+    # Legacy alias kept for compatibility — delegates to the real handler below
     project = db.get_project(req.project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     next_key = db.skip_sub_phase(req.project_id, req.sub_phase_key)
+    return {"status": "ok", "next_sub_phase": next_key}
+
+
+@router.post("/{project_id}/sub-phases/{key}/skip")
+def skip_sub_phase(project_id: int, key: str):
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    next_key = db.skip_sub_phase(project_id, key)
     return {"status": "ok", "next_sub_phase": next_key}
 
 
