@@ -36,9 +36,10 @@ if %errorlevel% == 0 (
 
 REM 最新コードを自動取得
 echo [0/2] 最新コードを取得中...
-git pull origin claude/ai-design-automation-app-xju0x
+git fetch origin claude/ai-design-automation-app-xju0x
+git reset --hard FETCH_HEAD
 if %errorlevel% neq 0 (
-    echo [警告] git pull に失敗しましたが、起動を続行します。
+    echo [警告] コード取得に失敗しましたが、起動を続行します。
 )
 
 echo [1/2] 依存パッケージをインストール中...
