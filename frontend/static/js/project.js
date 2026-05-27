@@ -552,9 +552,10 @@ function setChatRunning(flag) {
 async function skipSubPhase() {
   if (!confirm(`「${SUB_PHASE_LABELS[selectedSubPhase] || selectedSubPhase}」をスキップしますか？\nスキップしたフェーズは後から実行することもできます。`)) return;
 
-  const res = await fetch(`/api/projects/${projectId}/sub-phases/${selectedSubPhase}/skip`, {
+  const res = await fetch('/api/projects/sub-phase-review', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ output_id: 0, action: 'skip', project_id: projectId, sub_phase_key: selectedSubPhase }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

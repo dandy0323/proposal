@@ -44,10 +44,12 @@ class RunSubPhaseRequest(BaseModel):
 
 
 class ReviewSubPhaseRequest(BaseModel):
-    output_id: int
-    action: str  # "approve" | "reject" | "edit"
+    output_id: int = 0
+    action: str  # "approve" | "reject" | "edit" | "skip"
     comment: str = ""
     edit_instruction: str = ""
+    project_id: int = 0   # used for skip action
+    sub_phase_key: str = ""  # used for skip action
 
 
 class ReorderRequest(BaseModel):
@@ -197,6 +199,11 @@ def review_sub_phase(req: ReviewSubPhaseRequest):
         db.reject_sub_phase_output(req.output_id, req.comment)
     elif req.action == "edit":
         db.edit_sub_phase_output(req.output_id, req.edit_instruction)
+    elif req.action == "skip":
+        if not req.project_id or not req.sub_phase_key:
+            raise HTTPException(status_code=400, detail="project_id and sub_phase_key required for skip")
+        next_key = db.skip_sub_phase(req.project_id, req.sub_phase_key)
+        return {"status": "ok", "next_sub_phase": next_key}
     else:
         raise HTTPException(status_code=400, detail="Invalid action")
     return {"status": "ok"}
